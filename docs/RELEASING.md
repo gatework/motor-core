@@ -28,3 +28,9 @@ license and attribution; there are no prebuilt platform binaries in this release
 The initial release automation reuses the same artifact-verification approach
 as other gatework modules; source archives are CI products, not GitHub's generated
 "Source code" download links.
+
+CI runs Redis integration through `REDIS_URL`. MySQL integration is opt-in via
+`MYSQL_DSN` and optionally `MYSQL_REPLICA_DSN`; an unavailable configured fixture
+fails. Artifacts are retained for 30 days and cannot be overwritten. Both package
+and release jobs have explicit time limits. Once an artifact expires, do not
+substitute a local build or move a published tag; prepare a new checked version.

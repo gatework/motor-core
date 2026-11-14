@@ -33,7 +33,7 @@ Forked from [go-admin-team/go-admin-core](https://github.com/go-admin-team/go-ad
 - [x] Configuration management (multiple data sources)
 - [x] Log writer (file rotation support)
 
-> Every change runs the race detector, staticcheck on two platforms, and
+> Every change runs the race detector, the shared lint rules, and
 > allocation budgets on the paths that execute per request.
 
 ---
@@ -102,7 +102,8 @@ gains. Compare on the same machine and toolchain, including p99 under mixed load
 ## Engineering standards
 
 Follow [go-standards v1.0.2](https://github.com/gatework/go-standards/blob/v1.0.2/STANDARD.md).
-Run `make check`; see [adoption status](docs/standards.md) for current gate failures.
+Run `make check`; see [adoption status](docs/standards.md) for the remaining migration gaps.
+See [GitHub releases](docs/RELEASING.md) for exact-artifact publication.
 
 ## 🧪 Testing
 
@@ -126,7 +127,7 @@ make bench-compare BASE=origin/main
 **Enforced on every change:**
 
 - Race detector, every package
-- staticcheck for both darwin and linux
+- Shared lint, including staticcheck
 - The exported API snapshot in `api/core.txt` must match the code
 - Allocation budgets on the paths that run per request
 - Downstream consumers are built against this tree

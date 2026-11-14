@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Rejects CJK characters in newly added Go code and in commit messages.
 #
-# Only the diff against the base branch is inspected: existing Chinese
+# The current tracked tree, including staged and unstaged edits, is compared
+# with the merge base: existing Chinese
 # comments are a separate, tracked cleanup and must not block unrelated work.
 # Chinese remains allowed in issues, pull request discussion and README.zh-CN.md.
 #
@@ -33,7 +34,7 @@ def run(*args):
 
 
 added = []
-diff = run('git', 'diff', '--unified=0', f'{base}...HEAD', '--', '*.go')
+diff = run('git', 'diff', '--unified=0', base, '--', '*.go')
 path = None
 for line in diff.splitlines():
     if line.startswith('+++ b/'):
