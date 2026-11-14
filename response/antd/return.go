@@ -16,7 +16,7 @@ func Error(c *gin.Context, errCode string, errMsg string, showType string) {
 	if showType != "" {
 		res.ShowType = showType
 	}
-	res.TraceId = pkg.GenerateMsgIDFromContext(c)
+	res.TraceId = pkg.RequestID(c)
 	res.ErrorCode = errCode
 	c.Set("result", res)
 	c.Set("status", errCode)
@@ -29,7 +29,7 @@ func OK(c *gin.Context, data interface{}) {
 	res.Data = data
 	res.Success = true
 	res.Status = "done"
-	res.TraceId = pkg.GenerateMsgIDFromContext(c)
+	res.TraceId = pkg.RequestID(c)
 	c.Set("result", res)
 	c.Set("status", http.StatusOK)
 	c.AbortWithStatusJSON(http.StatusOK, res)
@@ -40,7 +40,7 @@ func UpFileOK(c *gin.Context, data interface{}) {
 	res.Data = data
 	res.Success = true
 	res.Status = "done"
-	res.TraceId = pkg.GenerateMsgIDFromContext(c)
+	res.TraceId = pkg.RequestID(c)
 	c.Set("result", res)
 	c.Set("status", http.StatusOK)
 	c.AbortWithStatusJSON(http.StatusOK, res)
@@ -54,7 +54,7 @@ func PageOK(c *gin.Context, result interface{}, total int, current int, pageSize
 	res.Current = current
 	res.PageSize = pageSize
 	res.Success = true
-	res.TraceId = pkg.GenerateMsgIDFromContext(c)
+	res.TraceId = pkg.RequestID(c)
 	c.Set("result", res)
 	c.Set("status", http.StatusOK)
 	c.AbortWithStatusJSON(http.StatusOK, res)
@@ -67,7 +67,7 @@ func ListOK(c *gin.Context, result interface{}, total int, current int, pageSize
 	res.ListData.Current = current
 	res.ListData.PageSize = pageSize
 	res.Success = true
-	res.TraceId = pkg.GenerateMsgIDFromContext(c)
+	res.TraceId = pkg.RequestID(c)
 	c.Set("result", res)
 	c.Set("status", http.StatusOK)
 	c.AbortWithStatusJSON(http.StatusOK, res)
@@ -75,7 +75,7 @@ func ListOK(c *gin.Context, result interface{}, total int, current int, pageSize
 
 // Custum 兼容函数
 func Custum(c *gin.Context, data gin.H) {
-	data["traceId"] = pkg.GenerateMsgIDFromContext(c)
+	data["traceId"] = pkg.RequestID(c)
 	c.Set("result", data)
 	c.AbortWithStatusJSON(http.StatusOK, data)
 }

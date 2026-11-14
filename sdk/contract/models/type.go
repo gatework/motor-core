@@ -13,5 +13,5 @@ type ActiveRecord interface {
 	SetCreateBy(createBy int)
 	SetUpdateBy(updateBy int)
 	Generate() ActiveRecord
-	GetId() interface{}
+	GetID() interface{}
 }

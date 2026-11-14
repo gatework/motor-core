@@ -23,5 +23,5 @@ type Control interface {
 	Generate() Control
 	Bind(ctx *gin.Context) error
 	GenerateM() (models.ActiveRecord, error)
-	GetId() interface{}
+	GetID() interface{}
 }

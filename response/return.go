@@ -19,7 +19,7 @@ func Error(c *gin.Context, code int, err error, msg string) {
 	if msg != "" {
 		res.SetMsg(msg)
 	}
-	res.SetTraceID(pkg.GenerateMsgIDFromContext(c))
+	res.SetTraceID(pkg.RequestID(c))
 	res.SetCode(int32(code))
 	res.SetSuccess(false)
 	c.Set("result", res)
@@ -35,7 +35,7 @@ func OK(c *gin.Context, data interface{}, msg string) {
 	if msg != "" {
 		res.SetMsg(msg)
 	}
-	res.SetTraceID(pkg.GenerateMsgIDFromContext(c))
+	res.SetTraceID(pkg.RequestID(c))
 	res.SetCode(http.StatusOK)
 	c.Set("result", res)
 	c.Set("status", http.StatusOK)
@@ -54,7 +54,7 @@ func PageOK(c *gin.Context, result interface{}, count int, pageIndex int, pageSi
 
 // Custum 兼容函数
 func Custom(c *gin.Context, data gin.H) {
-	data["requestId"] = pkg.GenerateMsgIDFromContext(c)
+	data["requestId"] = pkg.RequestID(c)
 	c.Set("result", data)
 	c.AbortWithStatusJSON(http.StatusOK, data)
 }

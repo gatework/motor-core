@@ -7,10 +7,10 @@ import (
 )
 
 // GeneralDelDto binds either a single :id or a JSON body of ids for a batch
-// delete, matching what ObjectById does for the request shapes that predate
+// delete, matching what ObjectByID does for the request shapes that predate
 // it.
 //
-// Deprecated: prefer ObjectById (single-or-batch) or ObjectDeleteReq
+// Deprecated: prefer ObjectByID (single-or-batch) or ObjectDeleteReq
 // (batch only). GeneralDelDto binds through both a `uri:"id"` and a
 // `json:"id"` tag with `validate:"required"`, and relies on the caller's own
 // binder plus that tag to reject a missing id; the newer types bind through
@@ -18,18 +18,18 @@ import (
 // being removed - the host has callers depending on this exact shape - but
 // new code should not add to them.
 type GeneralDelDto struct {
-	Id  int   `uri:"id" json:"id" validate:"required"`
-	Ids []int `json:"ids"`
+	ID  int   `uri:"id" json:"id" validate:"required"`
+	IDs []int `json:"ids"`
 }
 
-func (g GeneralDelDto) GetIds() []int {
+func (g GeneralDelDto) GetIDs() []int {
 	ids := make([]int, 0)
-	// Id used to be appended again inside an else branch below: passing only
-	// Id produced [5 5], and the same row got deleted twice.
-	if g.Id > 0 {
-		ids = append(ids, g.Id)
+	// ID used to be appended again inside an else branch below: passing only
+	// ID produced [5 5], and the same row got deleted twice.
+	if g.ID > 0 {
+		ids = append(ids, g.ID)
 	}
-	for _, id := range g.Ids {
+	for _, id := range g.IDs {
 		if id > 0 {
 			ids = append(ids, id)
 		}
@@ -47,7 +47,7 @@ func (g GeneralDelDto) GetIds() []int {
 // alone and implements its own Bind method instead of relying on the
 // caller's own binder plus a `validate:"required"` tag.
 type GeneralGetDto struct {
-	Id int `uri:"id" json:"id" validate:"required"`
+	ID int `uri:"id" json:"id" validate:"required"`
 }
 
 // MakeCondition turns q's `search` struct tags into a GORM scope.

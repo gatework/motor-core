@@ -26,7 +26,7 @@ func TestPkgAllocationBudget(t *testing.T) {
 	}
 
 	// When a gateway already supplied the correlation id this is a header read.
-	if got := testing.AllocsPerRun(100, func() { _ = GenerateMsgIDFromContext(c) }); got > 0 {
-		t.Errorf("GenerateMsgIDFromContext with an existing id allocates %.0f times, budget is 0", got)
+	if got := testing.AllocsPerRun(100, func() { _ = RequestID(c) }); got > 0 {
+		t.Errorf("RequestID with an existing id allocates %.0f times, budget is 0", got)
 	}
 }

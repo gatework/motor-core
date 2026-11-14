@@ -57,8 +57,8 @@ func HasError(err error, msg string, code ...int) {
 	}
 }
 
-// GenerateMsgIDFromContext 生成msgID
-func GenerateMsgIDFromContext(c *gin.Context) string {
+// RequestID 生成msgID
+func RequestID(c *gin.Context) string {
 	requestId := c.GetHeader(TrafficKey)
 	if requestId == "" {
 		requestId = uuid.New().String()

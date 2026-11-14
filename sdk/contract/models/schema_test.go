@@ -22,7 +22,7 @@ type probeRow struct {
 }
 
 func (probeRow) TableName() string         { return "spike_row" }
-func (e *probeRow) GetId() interface{}     { return e.Id }
+func (e *probeRow) GetID() interface{}     { return e.ID }
 func (e *probeRow) Generate() ActiveRecord { o := *e; return &o }
 
 // TestActiveRecordSelfReference checks that a model built from this

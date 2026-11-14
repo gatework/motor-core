@@ -100,7 +100,7 @@ func PermissionAction(enabled func() bool) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		msgID := pkg.GenerateMsgIDFromContext(c)
+		msgID := pkg.RequestID(c)
 		p, err := newDataPermission(db.WithContext(c.Request.Context()), userId)
 		if err != nil {
 			log.Errorf("MsgID[%s] PermissionAction error: %s", msgID, err)

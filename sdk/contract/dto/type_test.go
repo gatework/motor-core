@@ -16,7 +16,7 @@ func (p *probeIndex) GetNeedSearch() interface{}  { return p }
 
 var _ Index = &probeIndex{}
 
-type probeControl struct{ ObjectById }
+type probeControl struct{ ObjectByID }
 
 func (p *probeControl) Generate() Control                       { return p }
 func (p *probeControl) GenerateM() (models.ActiveRecord, error) { return nil, nil }

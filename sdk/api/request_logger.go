@@ -21,7 +21,7 @@ func GetRequestLogger(c *gin.Context) *logger.Helper {
 		}
 	}
 	//如果没有在上下文中放入logger
-	requestId := pkg.GenerateMsgIDFromContext(c)
+	requestId := pkg.RequestID(c)
 	log = logger.NewHelper(logger.Default()).WithFields(map[string]any{
 		strings.ToLower(pkg.TrafficKey): requestId,
 	})
@@ -30,7 +30,7 @@ func GetRequestLogger(c *gin.Context) *logger.Helper {
 
 // SetRequestLogger 设置logger中间件
 func SetRequestLogger(c *gin.Context) {
-	requestId := pkg.GenerateMsgIDFromContext(c)
+	requestId := pkg.RequestID(c)
 	log := logger.NewHelper(logger.Default()).WithFields(map[string]any{
 		strings.ToLower(pkg.TrafficKey): requestId,
 	})
