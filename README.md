@@ -99,6 +99,11 @@ admission and actual sink delivery: it reports written/s and dropped/op and
 includes draining accepted entries. Sampling and dropping are not throughput
 gains. Compare on the same machine and toolchain, including p99 under mixed load.
 
+## Engineering standards
+
+Follow [go-standards v1.0.2](https://github.com/gatework/go-standards/blob/v1.0.2/STANDARD.md).
+Run `make check`; see [adoption status](docs/standards.md) for current gate failures.
+
 ## 🧪 Testing
 
 ```bash

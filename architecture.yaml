@@ -1,0 +1,80 @@
+# Production import boundaries. New packages require an explicit declaration.
+declared:
+  - ./captcha
+  - ./casbin
+  - ./config
+  - ./config/encoder
+  - ./config/encoder/json
+  - ./config/encoder/toml
+  - ./config/encoder/xml
+  - ./config/encoder/yaml
+  - ./config/loader
+  - ./config/loader/memory
+  - ./config/reader
+  - ./config/reader/json
+  - ./config/source
+  - ./config/source/env
+  - ./config/source/file
+  - ./config/source/flag
+  - ./config/source/memory
+  - ./errors
+  - ./jwtauth
+  - ./jwtauth/user
+  - ./logger
+  - ./logger/writer
+  - ./observe/audit
+  - ./response
+  - ./response/antd
+  - ./sdk
+  - ./sdk/api
+  - ./sdk/bootstrap
+  - ./sdk/config
+  - ./sdk/contract/actions
+  - ./sdk/contract/app
+  - ./sdk/contract/dto
+  - ./sdk/contract/migration
+  - ./sdk/contract/models
+  - ./sdk/contract/seed
+  - ./sdk/pkg
+  - ./sdk/pkg/cronjob
+  - ./sdk/pkg/table
+  - ./sdk/pkg/utils
+  - ./sdk/pkg/ws
+  - ./sdk/runtime
+  - ./sdk/service
+  - ./server
+  - ./server/listener
+  - ./storage
+  - ./storage/cache
+  - ./storage/cachetest
+  - ./storage/queue
+  - ./storage/redis
+  - ./tools/coreupgrade
+  - ./tools/database
+  - ./tools/gorm/gormlog
+  - ./tools/language
+  - ./tools/poster
+  - ./tools/search
+  - ./tools/transfer
+  - ./tools/utils
+
+rules:
+  - name: configuration machinery stays independent of host wiring
+    packages: [./config/...]
+    deny: [./sdk/..., ./server/..., ./storage/..., ./logger/..., ./response/..., ./tools/...]
+  - name: storage implementations depend on contracts not host wiring
+    packages: [./storage, ./storage/cache/..., ./storage/queue/..., ./storage/redis/...]
+    deny: [./sdk/..., ./server/..., ./config/..., ./logger/..., ./response/..., ./tools/...]
+  - name: structured logging has no application dependencies
+    packages: [./logger/...]
+    deny: [./sdk/..., ./server/..., ./storage/..., ./config/..., ./response/..., ./tools/...]
+  - name: search resolution stays independent of HTTP and runtime
+    packages: [./tools/search/...]
+    deny: [./sdk/..., ./server/..., ./config/..., ./logger/..., ./response/..., github.com/gin-gonic/gin/...]
+  - name: runtime registries do not depend on request and settings layers
+    packages: [./sdk/runtime/...]
+    deny: [./sdk/api/..., ./sdk/config/..., ./sdk/service/..., ./sdk/bootstrap/..., ./server/...]
+  - name: reusable packages do not import the migration command
+    packages: [./...]
+    except: [./tools/coreupgrade]
+    deny: [./tools/coreupgrade]
