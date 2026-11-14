@@ -55,13 +55,13 @@ func TestObjectByIDBindKeepsBothTheUriIdAndTheBodyIds(t *testing.T) {
 	}
 }
 
-func TestObjectByIDBindFoldsTheUriIdIntoIdsWhenTheBodyCarriesNone(t *testing.T) {
+func TestObjectByIDBindKeepsTheURISeparateFromTheBatch(t *testing.T) {
 	s := &ObjectByID{}
 	if err := s.Bind(deleteCtx(t, "7", `{}`)); err != nil {
 		t.Fatalf("bind: %v", err)
 	}
-	if !reflect.DeepEqual(s.IDs, []int{7}) {
-		t.Fatalf("IDs = %v, want [7]", s.IDs)
+	if len(s.IDs) != 0 || s.GetID() != 7 {
+		t.Fatalf("IDs = %v, selected ID = %v; want URI ID 7 only", s.IDs, s.GetID())
 	}
 }
 
@@ -94,5 +94,37 @@ func TestGetIDReturnsTheSingleIdWhenTheBodyCarriesNone(t *testing.T) {
 	s := &ObjectByID{ID: 7}
 	if got := s.GetID(); got != 7 {
 		t.Fatalf("GetID = %v, want 7", got)
+	}
+}
+
+func TestObjectByIDBindAllowsAnEmptyOptionalBody(t *testing.T) {
+	request := &ObjectByID{}
+	if err := request.Bind(deleteCtx(t, "7", "")); err != nil {
+		t.Fatal(err)
+	}
+	if request.GetID() != 7 {
+		t.Fatalf("selected ID=%v", request.GetID())
+	}
+}
+func TestSelectedIDsDoNotAliasTheRequest(t *testing.T) {
+	requests := []struct {
+		name     string
+		ids      []int
+		selected func() any
+	}{
+		{name: "single or batch"}, {name: "batch only"},
+	}
+	first := &ObjectByID{IDs: []int{2, 3}}
+	second := &ObjectDeleteReq{IDs: []int{2, 3}}
+	requests[0].ids, requests[0].selected = first.IDs, first.GetID
+	requests[1].ids, requests[1].selected = second.IDs, second.GetID
+	for _, request := range requests {
+		t.Run(request.name, func(t *testing.T) {
+			selected := request.selected().([]int)
+			selected[0] = 99
+			if request.ids[0] != 2 {
+				t.Fatalf("selected IDs changed request: %v", request.ids)
+			}
+		})
 	}
 }
