@@ -14,8 +14,6 @@ Forked from [go-admin-team/go-admin-core](https://github.com/go-admin-team/go-ad
 
 ### 📝 Logger 模組（企業級日誌解決方案）
 
-- **非同步日誌** - 45x 效能提升（3,358ns → 75ns），支援 100k+ QPS
-- **取樣日誌** - 29x 效能提升（3,357ns → 116ns），智慧頻率控制
 - **遮罩日誌** - 自動遮罩敏感資料（手機號碼、密碼、電子郵件等），滿足法遵要求
 - **Logrus 轉接器** - 完整支援 Logrus 生態，可用 Hooks 超過 50 種
 - **正式環境設定** - 內建最佳實務設定（非同步 + 取樣 + 遮罩）
@@ -83,7 +81,6 @@ baseLog := logger.NewLogrusLogger(
 asyncLog := logger.NewAsyncLogger(baseLog, logger.DefaultAsyncConfig)
 defer asyncLog.(interface{ Close() error }).Close()
 
-// 45x 效能提升，延遲僅 75ns
 asyncLog.Log(logger.InfoLevel, "High performance logging")
 ```
 
@@ -153,8 +150,6 @@ func main() {
 
 | 功能 | 效能提升 | 延遲 | 記憶體用量 | 適用情境 |
 |------|---------|------|---------|---------|
-| 非同步日誌 | 45x | 75ns | 120 B/op | 高並行寫入 |
-| 取樣日誌 | 29x | 116ns | 16 B/op | 高頻重複日誌 |
 | 正式環境設定 | 34x | 98ns | 149 B/op | 正式環境建議 |
 
 **測試環境:** Apple M1 Pro | Go 1.27.4.1 | 通過 Race Detector 驗證

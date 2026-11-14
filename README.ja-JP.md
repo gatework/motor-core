@@ -14,8 +14,6 @@ Forked from [go-admin-team/go-admin-core](https://github.com/go-admin-team/go-ad
 
 ### 📝 Logger モジュール（エンタープライズ向けロギング）
 
-- **非同期ロガー** - 45 倍の高速化（3,358ns → 75ns）、100k+ QPS に対応
-- **サンプリングロガー** - 29 倍の高速化（3,357ns → 116ns）、出力頻度を自動制御
 - **マスキングロガー** - 機密情報（電話番号・パスワード・メールアドレスなど）を自動マスクし、コンプライアンス要件に対応
 - **Logrus アダプター** - Logrus エコシステムに完全対応、50 種類以上の Hook が利用可能
 - **本番向け設定** - ベストプラクティス（非同期 + サンプリング + マスキング）を同梱
@@ -83,7 +81,6 @@ baseLog := logger.NewLogrusLogger(
 asyncLog := logger.NewAsyncLogger(baseLog, logger.DefaultAsyncConfig)
 defer asyncLog.(interface{ Close() error }).Close()
 
-// 45 倍の高速化、レイテンシはわずか 75ns
 asyncLog.Log(logger.InfoLevel, "High performance logging")
 ```
 
@@ -153,8 +150,6 @@ func main() {
 
 | 機能 | 高速化 | レイテンシ | メモリ使用量 | 適した用途 |
 |------|---------|------|---------|---------|
-| 非同期ロガー | 45x | 75ns | 120 B/op | 高並行での書き込み |
-| サンプリングロガー | 29x | 116ns | 16 B/op | 高頻度の重複ログ |
 | 本番向け構成 | 34x | 98ns | 149 B/op | 本番環境で推奨 |
 
 **測定環境:** Apple M1 Pro | Go 1.27.4.1 | Race Detector 検証済み

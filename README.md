@@ -14,8 +14,6 @@ Forked from [go-admin-team/go-admin-core](https://github.com/go-admin-team/go-ad
 
 ### 📝 Logger Module (Enterprise-Grade Logging Solution)
 
-- **Async Logger** - 45x performance boost (3,358ns → 75ns), supports 100k+ QPS
-- **Sampling Logger** - 29x performance boost (3,357ns → 116ns), intelligent frequency control
 - **Sanitizer Logger** - Auto-sanitize sensitive data (phone, password, email, etc.), compliance-ready
 - **Logrus Adapter** - Full Logrus ecosystem support with 50+ hooks available
 - **Production-Ready Config** - Built-in best practices (async + sampling + sanitization)
@@ -84,7 +82,6 @@ baseLog := logger.NewLogrusLogger(
 asyncLog := logger.NewAsyncLogger(baseLog, logger.DefaultAsyncConfig)
 defer asyncLog.(interface{ Close() error }).Close()
 
-// 45x performance boost, only 75ns latency
 asyncLog.Log(logger.InfoLevel, "High performance logging")
 ```
 
@@ -154,8 +151,6 @@ func main() {
 
 | Feature | Performance Boost | Latency | Memory | Use Case |
 |---------|------------------|---------|--------|----------|
-| Async Logger | 45x | 75ns | 120 B/op | High-concurrency writes |
-| Sampling Logger | 29x | 116ns | 16 B/op | High-frequency duplicate logs |
 | Production Config | 34x | 98ns | 149 B/op | Production environments |
 
 **Test Environment:** Apple M1 Pro | Go 1.27.4.1 | Race Detector verified
