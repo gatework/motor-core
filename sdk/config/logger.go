@@ -34,8 +34,34 @@ func (l Logger) adapterType() string {
 	return l.Type
 }
 
+// validate checks settings without opening outputs or changing a process logger.
+func (l Logger) validate() error {
+	switch l.adapterType() {
+	case "", "logrus", "zap":
+	default:
+		return fmt.Errorf("config: unsupported logger adapter %q", l.adapterType())
+	}
+	if l.Level != "" {
+		if _, err := logger.GetLevel(l.Level); err != nil {
+			return err
+		}
+	}
+	switch l.Encoder {
+	case "", "json", "text", "console":
+	default:
+		return fmt.Errorf("config: unsupported logger encoder %q", l.Encoder)
+	}
+	if r := l.Rotation; r != nil && (r.MaxSize < 0 || r.MaxAge < 0 || r.MaxBackups < 0) {
+		return fmt.Errorf("config: logger rotation values cannot be negative")
+	}
+	return nil
+}
+
 // Open creates a logger owned by the caller and reports output failures.
 func (l Logger) Open() (logger.Logger, error) {
+	if err := l.validate(); err != nil {
+		return nil, err
+	}
 	if l.Path != "" {
 		if err := os.MkdirAll(l.Path, 0o755); err != nil {
 			return nil, fmt.Errorf("config: create log directory: %w", err)

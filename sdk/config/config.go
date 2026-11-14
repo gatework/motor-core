@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"log/slog"
 	"slices"
 	"sort"
@@ -16,7 +15,6 @@ import (
 	"github.com/gatework/motor-core/config/loader/memory"
 	jsonreader "github.com/gatework/motor-core/config/reader/json"
 	"github.com/gatework/motor-core/config/source"
-	"github.com/gatework/motor-core/logger"
 )
 
 // Settings is a complete settings-file snapshot.
@@ -136,6 +134,9 @@ func (s *Settings) validate() error {
 	if s.Settings.JWT.Timeout < 0 || s.Settings.JWT.MaxRefresh < 0 {
 		return errors.New("config: jwt durations cannot be negative")
 	}
+	if err := s.Settings.Logger.validate(); err != nil {
+		return err
+	}
 	for _, redis := range []*RedisOptions{s.Settings.Cache.Redis, queueRedis(s.Settings.Queue.Redis)} {
 		if redis != nil {
 			if _, err := redis.Options(); err != nil {
@@ -164,7 +165,6 @@ type Watcher struct {
 	closeErr  error
 	callbacks []func(*Settings) error
 	onApplied func(*Settings)
-	log       logger.Logger
 }
 
 // Options defines preparation callbacks and the notification after publication.
@@ -178,7 +178,8 @@ type Options struct {
 // Setup validates and publishes the initial settings, then starts watching.
 // Callbacks receive candidate snapshots before publication; a rejected candidate
 // leaves Current and registered extension values unchanged. Callbacks must clean
-// up resources they created if they return an error.
+// up resources they created if they return an error. Setup never creates or
+// publishes application resources, including the process logger.
 func Setup(ctx context.Context, s source.Source, options Options) (*Watcher, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -217,8 +218,24 @@ func (w *Watcher) apply(ctx context.Context, snapshot *loader.Snapshot) error {
 	if err != nil {
 		return err
 	}
+	var envelope struct {
+		Settings json.RawMessage `json:"settings"`
+	}
+	if err := values.Scan(&envelope); err != nil {
+		return err
+	}
+	if len(envelope.Settings) == 0 {
+		return errors.New("config: settings object is required")
+	}
+	var sections map[string]json.RawMessage
+	if err := json.Unmarshal(envelope.Settings, &sections); err != nil {
+		return err
+	}
+	if len(sections) == 0 {
+		return errors.New("config: settings object must not be empty or null")
+	}
 	next := &Settings{}
-	if err := values.Scan(next); err != nil {
+	if err := json.Unmarshal(envelope.Settings, &next.Settings); err != nil {
 		return err
 	}
 	if err := next.validate(); err != nil {
@@ -229,34 +246,18 @@ func (w *Watcher) apply(ctx context.Context, snapshot *loader.Snapshot) error {
 	if err != nil {
 		return err
 	}
-	log, err := next.Settings.Logger.Open()
-	if err != nil {
-		return err
-	}
 	for _, callback := range w.callbacks {
 		if callback == nil {
 			continue
 		}
 		if err := callback(cloneSettings(next)); err != nil {
-			if closer, ok := log.(io.Closer); ok {
-				_ = closer.Close()
-			}
 			return err
 		}
 	}
 	if err := ctx.Err(); err != nil {
-		if closer, ok := log.(io.Closer); ok {
-			_ = closer.Close()
-		}
 		return err
 	}
 	current.Store(&publishedSettings{settings: next, extensions: extensions})
-	previous := w.log
-	w.log = log
-	logger.SetDefault(log)
-	if closer, ok := previous.(io.Closer); ok {
-		_ = closer.Close()
-	}
 	if w.onApplied != nil {
 		w.onApplied(cloneSettings(next))
 	}
@@ -266,11 +267,6 @@ func (w *Watcher) apply(ctx context.Context, snapshot *loader.Snapshot) error {
 func (w *Watcher) run(ctx context.Context) {
 	defer close(w.done)
 	defer w.loader.Close()
-	defer func() {
-		if closer, ok := w.log.(io.Closer); ok {
-			_ = closer.Close()
-		}
-	}()
 	stop := context.AfterFunc(ctx, func() { _ = w.watch.Stop() })
 	defer stop()
 	for {
