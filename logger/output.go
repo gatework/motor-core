@@ -25,12 +25,12 @@ func openOutput(opts Options) (io.Writer, io.Closer, error) {
 		if filepath.Ext(path) == "" {
 			path = filepath.Join(path, "app.log")
 		}
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 			return nil, nil, fmt.Errorf("logger: create log directory: %w", err)
 		}
 		// Lumberjack opens lazily. Check the destination now so construction
 		// cannot succeed with a file that will reject the first log entry.
-		file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+		file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 		if err != nil {
 			return nil, nil, fmt.Errorf("logger: open log file: %w", err)
 		}

@@ -1,15 +1,17 @@
+// Package toml encodes configuration values as TOML.
 package toml
 
 import (
 	"bytes"
 
 	"github.com/BurntSushi/toml"
+
 	"github.com/gatework/motor-core/config/encoder"
 )
 
 type tomlEncoder struct{}
 
-func (t tomlEncoder) Encode(v interface{}) ([]byte, error) {
+func (t tomlEncoder) Encode(v any) ([]byte, error) {
 	b := bytes.NewBuffer(nil)
 	defer b.Reset()
 	err := toml.NewEncoder(b).Encode(v)
@@ -19,7 +21,7 @@ func (t tomlEncoder) Encode(v interface{}) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-func (t tomlEncoder) Decode(d []byte, v interface{}) error {
+func (t tomlEncoder) Decode(d []byte, v any) error {
 	return toml.Unmarshal(d, v)
 }
 
@@ -27,6 +29,7 @@ func (t tomlEncoder) String() string {
 	return "toml"
 }
 
+// NewEncoder constructs a TOML configuration encoder.
 func NewEncoder() encoder.Encoder {
 	return tomlEncoder{}
 }

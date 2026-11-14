@@ -100,7 +100,7 @@ func BenchmarkMaskingCore_Disabled(b *testing.B) {
 	))
 	log := zap.New(core)
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		log.Info("hello", zap.String("k", "v"))
 	}
 }
@@ -115,7 +115,7 @@ func BenchmarkMaskingCore_Enabled(b *testing.B) {
 	))
 	log := zap.New(core)
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		log.Info("hello", zap.String("k", "v"))
 	}
 }

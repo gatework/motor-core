@@ -121,7 +121,7 @@ func TestRedisSectionSelectsRedis(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer second.Del(context.Background(), "config-lifecycle-test")
-	q, err := (Queue{Redis: &RedisQueue{RedisOptions: RedisOptions{URL: url}}}).Open(t.Context())
+	q, err := (Queue{Redis: &RedisQueue{URL: url}}).Open(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}

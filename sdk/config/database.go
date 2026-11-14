@@ -1,5 +1,6 @@
 package config
 
+// Database configures a database connection pool and optional resolvers.
 type Database struct {
 	Driver          string
 	Source          string
@@ -10,6 +11,7 @@ type Database struct {
 	Registers       []DBResolverConfig
 }
 
+// DBResolverConfig selects source and replica connections for tables.
 type DBResolverConfig struct {
 	Sources  []string
 	Replicas []string

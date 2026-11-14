@@ -16,20 +16,18 @@ import (
 // Close by a second — three thousand of those is a lot of goroutines to hold
 // open for a race that does not involve them.
 func TestCloseIsSafeUnderConcurrency(t *testing.T) {
-	for i := 0; i < 3000; i++ {
+	for range 3000 {
 		c := &Config{exit: make(chan bool)}
 
 		var wg sync.WaitGroup
 		start := make(chan struct{})
-		for j := 0; j < 32; j++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+		for range 32 {
+			wg.Go(func() {
 				<-start
 				if err := c.Close(); err != nil {
 					t.Errorf("Close: %v", err)
 				}
-			}()
+			})
 		}
 		close(start)
 		wg.Wait()

@@ -7,7 +7,7 @@ trap 'rm -rf "$workdir"' EXIT
 mkdir -p "$workdir/consumer" "$workdir/unrelated"
 cat > "$workdir/consumer/go.mod" <<'MOD'
 module example.com/consumer
-go 1.27.1
+go 1.27.4
 require github.com/go-admin-team/go-admin-core/v2 v2.11.0
 MOD
 cat > "$workdir/consumer/main.go" <<'GO'
@@ -24,7 +24,7 @@ var _ = writer.New
 func main() { _, _ = search.Resolve(search.MySQL, struct{}{}) }
 GO
 cat > "$workdir/consumer/go.work" <<'WORK'
-go 1.27.1
+go 1.27.4
 use .
 WORK
 cp -R "$workdir/consumer" "$workdir/before"
@@ -32,7 +32,7 @@ cp -R "$workdir/consumer" "$workdir/before"
 diff -r "$workdir/before" "$workdir/consumer"
 cat > "$workdir/unrelated/go.mod" <<'MOD'
 module example.com/unrelated
-go 1.27.1
+go 1.27.4
 MOD
 printf 'package main\nfunc main() {}\n' > "$workdir/unrelated/main.go"
 if "$ROOT/scripts/canary.sh" "$workdir/unrelated" > "$workdir/unrelated.log" 2>&1; then

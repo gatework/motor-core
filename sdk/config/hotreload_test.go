@@ -10,11 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"gorm.io/gorm"
+
 	"github.com/gatework/motor-core/config/source/file"
 	"github.com/gatework/motor-core/logger"
 	"github.com/gatework/motor-core/sdk/runtime"
 	"github.com/gatework/motor-core/storage"
-	"gorm.io/gorm"
 )
 
 type labelledCache struct {

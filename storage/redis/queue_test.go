@@ -22,6 +22,7 @@ func TestRedisQueueConformance(t *testing.T) {
 	admin := adminClient(t, url)
 
 	cachetest.RunQueue(t, func(t *testing.T) storage.Queue {
+		t.Helper()
 		flush(t, admin)
 
 		q, err := redisstore.OpenQueue(context.Background(), redisOptions(t, url), redisstore.QueueOptions{
@@ -41,21 +42,6 @@ func TestRedisQueueConformance(t *testing.T) {
 type failing struct {
 	mu       sync.Mutex
 	attempts []int
-}
-
-func (f *failing) handle(_ context.Context, m storage.Message) error {
-	f.mu.Lock()
-	f.attempts = append(f.attempts, m.Attempts)
-	f.mu.Unlock()
-	return errors.New("handler failed on purpose")
-}
-
-func (f *failing) seen() []int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	out := make([]int, len(f.attempts))
-	copy(out, f.attempts)
-	return out
 }
 
 // A message whose handler keeps failing must be retried up to MaxAttempts and
@@ -131,7 +117,7 @@ func TestRetriesUntilMaxAttemptsThenLeavesPending(t *testing.T) {
 }
 
 // roundTrip publishes one message and returns it as the handler saw it.
-func roundTrip(t *testing.T, url string, values map[string]interface{}) storage.Message {
+func roundTrip(t *testing.T, url string, values map[string]any) storage.Message {
 	t.Helper()
 
 	q, err := redisstore.OpenQueue(context.Background(), redisOptions(t, url), redisstore.QueueOptions{
@@ -174,7 +160,7 @@ func TestValuesTravelAsJSON(t *testing.T) {
 	url := redisURL(t)
 	flush(t, adminClient(t, url))
 
-	m := roundTrip(t, url, map[string]interface{}{
+	m := roundTrip(t, url, map[string]any{
 		"id":    "42",
 		"count": 7,
 		"retry": true,
@@ -197,7 +183,7 @@ func TestReservedFieldNameIsNotSwallowed(t *testing.T) {
 	url := redisURL(t)
 	flush(t, adminClient(t, url))
 
-	m := roundTrip(t, url, map[string]interface{}{"go-admin:empty": "mine"})
+	m := roundTrip(t, url, map[string]any{"go-admin:empty": "mine"})
 
 	if m.Values["go-admin:empty"] != "mine" {
 		t.Errorf("the caller's field was lost, got %#v", m.Values)
@@ -375,4 +361,19 @@ func TestReadLoopPacesItselfWhenTheGroupCannotBeRecreated(t *testing.T) {
 	if reads, limit := client.reads.Load(), int64(window/block)*3; reads > limit {
 		t.Errorf("%d reads in %v, expected at most %d: the loop is not backing off", reads, window, limit)
 	}
+}
+
+func (f *failing) handle(_ context.Context, m storage.Message) error {
+	f.mu.Lock()
+	f.attempts = append(f.attempts, m.Attempts)
+	f.mu.Unlock()
+	return errors.New("handler failed on purpose")
+}
+
+func (f *failing) seen() []int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]int, len(f.attempts))
+	copy(out, f.attempts)
+	return out
 }

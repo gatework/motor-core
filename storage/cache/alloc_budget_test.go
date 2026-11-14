@@ -1,3 +1,4 @@
+// Package cache_test verifies public cache behavior and resource bounds.
 package cache
 
 import (

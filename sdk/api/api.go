@@ -2,20 +2,20 @@ package api
 
 import (
 	"errors"
-	"io"
 
 	vd "github.com/bytedance/go-tagexpr/v2/validator"
-	"github.com/gatework/motor-core/logger"
-	"github.com/gatework/motor-core/response"
-	"github.com/gatework/motor-core/sdk/pkg"
-	"github.com/gatework/motor-core/sdk/service"
-	"github.com/gatework/motor-core/storage"
-	"github.com/gatework/motor-core/tools/language"
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
 	"gorm.io/gorm"
+
+	"github.com/gatework/motor-core/logger"
+	"github.com/gatework/motor-core/response"
+	"github.com/gatework/motor-core/sdk/service"
+	"github.com/gatework/motor-core/storage"
+	"github.com/gatework/motor-core/tools/language"
 )
 
+// DefaultLanguage is the locale used when the request supplies no preference.
 var DefaultLanguage = "zh-CN"
 
 // Dependencies are supplied by the host when it creates a request handler.
@@ -33,6 +33,7 @@ type API struct {
 	Cache   storage.Cache
 }
 
+// New constructs a request handler with explicit dependencies.
 func New(c *gin.Context, deps Dependencies) (*API, error) {
 	if c == nil || c.Request == nil {
 		return nil, errors.New("api: request context is required")
@@ -63,43 +64,25 @@ func validate(obj any) error {
 	return binding.Validator.ValidateStruct(obj)
 }
 
-// Bind decodes and validates a DTO without retaining errors on the handler.
-func (e *API) Bind(d any, bindings ...binding.Binding) error {
-	if e.Context == nil || e.Context.Request == nil {
+// Bind decodes query parameters, one content-type-selected body, and URI
+// parameters in that order, then validates the completed DTO once. Form tags
+// bind query and URL-encoded values. URI values take precedence over the body.
+func (e *API) Bind(d any) error {
+	if e == nil || e.Context == nil || e.Context.Request == nil {
 		return errors.New("api: request context is required")
 	}
-	if err := e.Context.Request.Context().Err(); err != nil {
+	ctx := e.Context.Request.Context()
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if d == nil {
-		return errors.New("api: binding target is required")
+	if err := decodeRequest(e.Context, d); err != nil {
+		return err
 	}
-	var err error
-	if len(bindings) == 0 {
-		bindings, err = constructor.bindingsFor(d)
-		if err != nil {
-			return err
-		}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
-	validated := false
-	for _, b := range bindings {
-		if b == nil {
-			err = e.Context.ShouldBindUri(d)
-		} else {
-			err = e.Context.ShouldBindWith(d, b)
-		}
-		if errors.Is(err, io.EOF) {
-			continue
-		}
-		if err != nil {
-			return TranslateValidationErrors(err, e.getAcceptLanguage())
-		}
-		validated = true
-	}
-	if !validated {
-		if err := validate(d); err != nil {
-			return TranslateValidationErrors(err, e.getAcceptLanguage())
-		}
+	if err := validate(d); err != nil {
+		return TranslateValidationErrors(err, e.getAcceptLanguage())
 	}
 	return vd.Validate(d)
 }
@@ -124,13 +107,9 @@ func (e *API) Custom(data gin.H) {
 	response.Custom(e.Context, data)
 }
 
-func (e API) Translate(form, to any) {
-	pkg.Translate(form, to)
-}
-
 // getAcceptLanguage reports the language the request asked for, falling back
 // to DefaultLanguage.
-func (e API) getAcceptLanguage() string {
+func (e *API) getAcceptLanguage() string {
 	languages := language.ParseAcceptLanguage(e.Context.GetHeader("Accept-Language"), nil)
 	if len(languages) == 0 {
 		return DefaultLanguage

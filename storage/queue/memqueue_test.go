@@ -10,6 +10,7 @@ import (
 
 func TestMemQueueConformance(t *testing.T) {
 	cachetest.RunQueue(t, func(t *testing.T) storage.Queue {
+		t.Helper()
 		return queue.New(64)
 	})
 }

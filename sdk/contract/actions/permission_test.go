@@ -57,7 +57,7 @@ func TestScopeComesFromTheTokenWhenItCarriesOne(t *testing.T) {
 	if !ok {
 		t.Fatal("the token carried the scope and a database was still needed")
 	}
-	if p.DataScope != "4" || p.UserId != 7 || p.DeptId != 5 || p.RoleId != 3 {
+	if p.DataScope != "4" || p.UserID != 7 || p.DeptID != 5 || p.RoleID != 3 {
 		t.Fatalf("scope read as %+v", p)
 	}
 }
@@ -122,7 +122,7 @@ func TestPermissionScopes(t *testing.T) {
 		name string
 		p    *DataPermission
 		want string
-		vars []interface{}
+		vars []any
 	}{
 		{
 			name: "all",
@@ -131,27 +131,27 @@ func TestPermissionScopes(t *testing.T) {
 		},
 		{
 			name: "custom",
-			p:    &DataPermission{DataScope: DataScopeCustom, RoleId: 3},
+			p:    &DataPermission{DataScope: DataScopeCustom, RoleID: 3},
 			want: "SELECT * FROM `t` WHERE t.create_by in (select sys_user.user_id from sys_role_dept left join sys_user on sys_user.dept_id=sys_role_dept.dept_id where sys_role_dept.role_id = ?)",
-			vars: []interface{}{3},
+			vars: []any{3},
 		},
 		{
 			name: "dept",
-			p:    &DataPermission{DataScope: DataScopeDept, DeptId: 5},
+			p:    &DataPermission{DataScope: DataScopeDept, DeptID: 5},
 			want: "SELECT * FROM `t` WHERE t.create_by in (SELECT user_id from sys_user where dept_id = ? )",
-			vars: []interface{}{5},
+			vars: []any{5},
 		},
 		{
 			name: "dept-tree",
-			p:    &DataPermission{DataScope: DataScopeDeptTree, DeptId: 5},
+			p:    &DataPermission{DataScope: DataScopeDeptTree, DeptID: 5},
 			want: "SELECT * FROM `t` WHERE t.create_by in (SELECT user_id from sys_user where sys_user.dept_id in(select dept_id from sys_dept where dept_path like ? ))",
-			vars: []interface{}{"%/5/%"},
+			vars: []any{"%/5/%"},
 		},
 		{
 			name: "self",
-			p:    &DataPermission{DataScope: DataScopeSelf, UserId: 7},
+			p:    &DataPermission{DataScope: DataScopeSelf, UserID: 7},
 			want: "SELECT * FROM `t` WHERE t.create_by = ?",
-			vars: []interface{}{7},
+			vars: []any{7},
 		},
 		// H2: an unrecognized scope must not read like "all data" any more.
 		{name: "unrecognized value", p: &DataPermission{DataScope: "6"}, want: noRows},
@@ -161,9 +161,9 @@ func TestPermissionScopes(t *testing.T) {
 		{name: "zero value (no scope at all)", p: &DataPermission{}, want: noRows},
 		// H3: dept_path always starts with "/0/", so DeptId 0 must not be
 		// allowed to build a pattern that matches every row.
-		{name: "dept with DeptId 0", p: &DataPermission{DataScope: DataScopeDept, DeptId: 0}, want: noRows},
-		{name: "dept-tree with DeptId 0", p: &DataPermission{DataScope: DataScopeDeptTree, DeptId: 0}, want: noRows},
-		{name: "dept-tree with negative DeptId", p: &DataPermission{DataScope: DataScopeDeptTree, DeptId: -1}, want: noRows},
+		{name: "dept with DeptId 0", p: &DataPermission{DataScope: DataScopeDept, DeptID: 0}, want: noRows},
+		{name: "dept-tree with DeptId 0", p: &DataPermission{DataScope: DataScopeDeptTree, DeptID: 0}, want: noRows},
+		{name: "dept-tree with negative DeptId", p: &DataPermission{DataScope: DataScopeDeptTree, DeptID: -1}, want: noRows},
 	}
 
 	for _, tc := range cases {
@@ -171,7 +171,7 @@ func TestPermissionScopes(t *testing.T) {
 			stmt := db.Session(&gorm.Session{DryRun: true}).
 				Table("t").
 				Scopes(Permission("t", tc.p, enabled)).
-				Find(&[]map[string]interface{}{}).
+				Find(&[]map[string]any{}).
 				Statement
 
 			if stmt.SQL.String() != tc.want {

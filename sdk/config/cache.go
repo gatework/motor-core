@@ -15,6 +15,7 @@ type Cache struct {
 	Memory *CacheMemory  `yaml:"memory" json:"memory"`
 }
 
+// CacheMemory selects the bounded in-process cache backend.
 type CacheMemory struct{}
 
 // Open constructs a cache owned by the caller. Close releases its resources,

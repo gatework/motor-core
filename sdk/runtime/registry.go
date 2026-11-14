@@ -2,7 +2,7 @@ package runtime
 
 import (
 	"context"
-	"os"
+
 	goruntime "runtime" // aliased: this package is itself called runtime
 	"runtime/debug"
 	"slices"
@@ -128,26 +128,26 @@ func (r *registry) takeAllLocked() []callback {
 // Callbacks registered while a round is running are not picked up by that
 // round; the next one takes them. Sweeping them up at the end instead would
 // never terminate for a hook that registers a hook.
-func (e *Application) runReentrant(r *registry, kind string) {
-	e.mux.Lock()
+func (a *Application) runReentrant(r *registry, kind string) {
+	a.mux.Lock()
 	if r.running {
 		r.pending = true
-		e.mux.Unlock()
+		a.mux.Unlock()
 		return
 	}
 	r.running = true
-	e.mux.Unlock()
+	a.mux.Unlock()
 
 	for {
-		e.mux.Lock()
+		a.mux.Lock()
 		batch := r.takeAllLocked()
 		grew := r.rounds > 0 && len(batch) > r.lastCount
 		previous := r.lastCount
 		r.lastCount = len(batch)
 		r.rounds++
-		e.mux.Unlock()
+		a.mux.Unlock()
 
-		log := e.log()
+		log := a.log()
 		if grew {
 			// The registry of a re-entrant phase only ever grows, and every
 			// entry runs on every round. A hook that registers a hook
@@ -159,17 +159,17 @@ func (e *Application) runReentrant(r *registry, kind string) {
 				"if this number keeps climbing, find the hook that is not idempotent", kind, len(batch), previous)
 		}
 		for i := range batch {
-			e.invoke(kind, batch[i], log)
+			a.invoke(kind, batch[i], log)
 		}
 
-		e.mux.Lock()
+		a.mux.Lock()
 		if !r.pending {
 			r.running = false
-			e.mux.Unlock()
+			a.mux.Unlock()
 			return
 		}
 		r.pending = false
-		e.mux.Unlock()
+		a.mux.Unlock()
 	}
 }
 
@@ -185,13 +185,10 @@ type callbackConfig struct {
 	fatal bool
 }
 
-// WithFatal marks a callback the process must not start without: a panic in it
-// is logged and then the process exits with status 1.
-//
-// This is the exception, not the default. An application that marks itself
-// fatal makes the whole host program as fragile as itself, and the exit skips
-// every deferred cleanup - so it only belongs on work that happens before the
-// server starts listening.
+// WithFatal marks a callback required for startup. Its panic is logged and
+// propagates through framework guards so later startup callbacks do not run.
+// The host owns recovery and the process exit code; deferred cleanup still runs.
+// This option is ignored when registering shutdown callbacks.
 func WithFatal() CallbackOption { return func(c *callbackConfig) { c.fatal = true } }
 
 // WithName labels the callback in guard logs. Without it the log carries the
@@ -220,17 +217,21 @@ func callerSite(skip int) string {
 	return file + ":" + strconv.Itoa(line)
 }
 
-// exit is os.Exit behind a seam so the fatal path can be asserted in-process
-// as well as in the subprocess test.
-var exit = os.Exit
+type startupError struct{}
+
+func (*startupError) Error() string { return "runtime: required callback failed" }
+
+// A required callback aborts startup by panicking; only the host decides its exit code.
+// Keep the seam for in-process tests of the fatal decision.
+var exit = func(int) { panic(&startupError{}) }
 
 // log returns a helper over the configured logger.
 //
 // The nil fallback matters because every caller of this is already reporting a
 // defect: a program that called SetLogger(nil) should still be told that its
 // callback panicked, not crash a second time on the way to saying so.
-func (e *Application) log() *logger.Helper {
-	l := e.Logger()
+func (a *Application) log() *logger.Helper {
+	l := a.Logger()
 	if l == nil {
 		l = logger.NewLogger()
 	}
@@ -242,14 +243,14 @@ func (e *Application) log() *logger.Helper {
 // The lock covers the append and nothing else. Logging under it would run a
 // logger the application supplied, and there is no promise that it will not
 // call back into Application.
-func (e *Application) register(r *registry, cb callback, setter, runner string) {
-	e.mux.Lock()
+func (a *Application) register(r *registry, cb callback, setter, runner string) {
+	a.mux.Lock()
 	ok := r.appendLocked(cb)
-	e.mux.Unlock()
+	a.mux.Unlock()
 	if ok {
 		return
 	}
-	e.log().Errorf("runtime: %s ignored - the registry was already run and closed by %s; "+
+	a.log().Errorf("runtime: %s ignored - the registry was already run and closed by %s; "+
 		"register from init() or before the server starts (registered at %s)", setter, runner, cb.site)
 }
 
@@ -259,18 +260,18 @@ func (e *Application) register(r *registry, cb callback, setter, runner string) 
 // an app router asks for the engine and then sets it, a config callback stores
 // a database - and sync.RWMutex is not reentrant, so holding mux across a
 // callback deadlocks on the first one that does.
-func (e *Application) runRegistry(r *registry, kind string) {
-	e.mux.Lock()
+func (a *Application) runRegistry(r *registry, kind string) {
+	a.mux.Lock()
 	pending := r.takePendingLocked()
-	e.mux.Unlock()
+	a.mux.Unlock()
 
 	if len(pending) == 0 {
 		return
 	}
 
-	log := e.log()
+	log := a.log()
 	for i := range pending {
-		e.invoke(kind, pending[i], log)
+		a.invoke(kind, pending[i], log)
 	}
 }
 
@@ -280,18 +281,20 @@ func (e *Application) runRegistry(r *registry, kind string) {
 // stops there, cb.fn returns normally and the recover below sees nil. The
 // guard reaches exactly as far as Go's recover does - which is to say not into
 // a goroutine the callback started.
-func (e *Application) invoke(kind string, cb callback, log *logger.Helper) {
+func (a *Application) invoke(kind string, cb callback, log *logger.Helper) {
 	defer func() {
 		r := recover()
 		if r == nil {
 			return
 		}
+		if _, fatal := r.(*startupError); fatal {
+			panic(r)
+		}
 		stack := debug.Stack()
-		if cb.fatal {
-			// Not log.Fatalf: Helper.Fatalf returns without exiting when the
-			// configured level filters FatalLevel out, which would turn "must
-			// not start" into "started anyway, quietly".
-			log.Errorf("runtime: fatal %s callback %s panicked, exiting: %v\n%s",
+		if cb.fatal && kind != BeforeExit.String() {
+			// Required startup failures must remain distinct from ordinary
+			// callback panics, regardless of the configured logging policy.
+			log.Errorf("runtime: fatal %s callback %s panicked, aborting startup: %v\n%s",
 				kind, cb.label(), r, stack)
 			exit(1)
 			return
@@ -306,14 +309,14 @@ func (e *Application) invoke(kind string, cb callback, log *logger.Helper) {
 //
 // The callback runs when RunBefore is called, in registration order, behind a
 // panic guard. Registering after RunBefore has run is refused and reported.
-func (e *Application) SetBefore(f func()) {
-	e.register(&e.before, callback{fn: f, site: callerSite(2)}, "SetBefore", "RunBefore")
+func (a *Application) SetBefore(f func()) {
+	a.register(&a.before, callback{fn: f, site: callerSite(2)}, "SetBefore", "RunBefore")
 }
 
 // SetBeforeWith registers a before callback and configures how a panic in it
 // is treated. With no options it is identical to SetBefore.
-func (e *Application) SetBeforeWith(f func(), opts ...CallbackOption) {
-	e.register(&e.before, newCallback(f, callerSite(2), opts), "SetBeforeWith", "RunBefore")
+func (a *Application) SetBeforeWith(f func(), opts ...CallbackOption) {
+	a.register(&a.before, newCallback(f, callerSite(2), opts), "SetBeforeWith", "RunBefore")
 }
 
 // RunBefore afterwards runs everything a second time.
@@ -322,17 +325,17 @@ func (e *Application) SetBeforeWith(f func(), opts ...CallbackOption) {
 // registration order, and closes the registry to further registration.
 //
 // Calling it again is a no-op: the callbacks that already ran do not run twice.
-func (e *Application) RunBefore() {
-	e.runRegistry(&e.before, "before")
+func (a *Application) RunBefore() {
+	a.runRegistry(&a.before, "before")
 }
 
 // BeforeSealed reports whether RunBefore has run. A registration made after
 // that point is dropped, so an installer can ask rather than find out from a
 // log line.
-func (e *Application) BeforeSealed() bool {
-	e.mux.RLock()
-	defer e.mux.RUnlock()
-	return e.before.sealed
+func (a *Application) BeforeSealed() bool {
+	a.mux.RLock()
+	defer a.mux.RUnlock()
+	return a.before.sealed
 }
 
 // SetAppRouters registers a router initialiser for an application module.
@@ -340,14 +343,14 @@ func (e *Application) BeforeSealed() bool {
 // The callback runs when RunAppRouters is called, in registration order,
 // behind a panic guard. Registering after RunAppRouters has run is refused and
 // reported.
-func (e *Application) SetAppRouters(appRouters func()) {
-	e.register(&e.appRouters, callback{fn: appRouters, site: callerSite(2)}, "SetAppRouters", "RunAppRouters")
+func (a *Application) SetAppRouters(appRouters func()) {
+	a.register(&a.appRouters, callback{fn: appRouters, site: callerSite(2)}, "SetAppRouters", "RunAppRouters")
 }
 
 // SetAppRoutersWith registers a router initialiser and configures how a panic
 // in it is treated. With no options it is identical to SetAppRouters.
-func (e *Application) SetAppRoutersWith(appRouters func(), opts ...CallbackOption) {
-	e.register(&e.appRouters, newCallback(appRouters, callerSite(2), opts), "SetAppRoutersWith", "RunAppRouters")
+func (a *Application) SetAppRoutersWith(appRouters func(), opts ...CallbackOption) {
+	a.register(&a.appRouters, newCallback(appRouters, callerSite(2), opts), "SetAppRoutersWith", "RunAppRouters")
 }
 
 // RunAppRouters afterwards runs everything a second time.
@@ -357,15 +360,15 @@ func (e *Application) SetAppRoutersWith(appRouters func(), opts ...CallbackOptio
 //
 // Calling it again is a no-op: the initialisers that already ran do not run
 // twice.
-func (e *Application) RunAppRouters() {
-	e.runRegistry(&e.appRouters, "appRouters")
+func (a *Application) RunAppRouters() {
+	a.runRegistry(&a.appRouters, "appRouters")
 }
 
 // AppRoutersSealed reports whether RunAppRouters has run. A registration made
 // after that point is dropped, so an installer can ask rather than find out
 // from a log line.
-func (e *Application) AppRoutersSealed() bool {
-	e.mux.RLock()
-	defer e.mux.RUnlock()
-	return e.appRouters.sealed
+func (a *Application) AppRoutersSealed() bool {
+	a.mux.RLock()
+	defer a.mux.RUnlock()
+	return a.appRouters.sealed
 }

@@ -2,8 +2,9 @@ package memory
 
 import (
 	"bytes"
-	"github.com/gatework/motor-core/config/source"
 	"sync"
+
+	"github.com/gatework/motor-core/config/source"
 )
 
 type watcher struct {
@@ -24,9 +25,9 @@ func (w *watcher) Next() (*source.ChangeSet, error) {
 	case <-w.done:
 		return nil, source.ErrWatcherStopped
 	case cs := <-w.updates:
-		copy := *cs
-		copy.Data = bytes.Clone(cs.Data)
-		return &copy, nil
+		cloned := *cs
+		cloned.Data = bytes.Clone(cs.Data)
+		return &cloned, nil
 	}
 }
 

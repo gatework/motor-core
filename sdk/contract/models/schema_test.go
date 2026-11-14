@@ -16,13 +16,13 @@ import (
 // comparable.
 type probeRow struct {
 	Model
-	Name string `json:"name" gorm:"size:64;comment:name"`
 	ControlBy
 	ModelTime
+	Name string `json:"name" gorm:"size:64;comment:name"`
 }
 
-func (probeRow) TableName() string         { return "spike_row" }
-func (e *probeRow) GetId() interface{}     { return e.Id }
+func (*probeRow) TableName() string        { return "spike_row" }
+func (e *probeRow) GetID() any             { return e.ID }
 func (e *probeRow) Generate() ActiveRecord { o := *e; return &o }
 
 // TestActiveRecordSelfReference checks that a model built from this
@@ -67,7 +67,7 @@ var wantSchema = []string{
 	"updated_at|time|pk=false|size=0",
 }
 
-func describeSchema(t *testing.T, v interface{}) []string {
+func describeSchema(t *testing.T, v any) []string {
 	t.Helper()
 	s, err := schema.Parse(v, &sync.Map{}, schema.NamingStrategy{SingularTable: true})
 	if err != nil {
@@ -95,11 +95,11 @@ func TestSchemaMatchesFrozenGolden(t *testing.T) {
 // consumer that reads struct tags or does field-name based reflection over
 // its own model depends on it.
 func TestEmbeddedFieldNames(t *testing.T) {
-	want := []string{"Model", "Name", "ControlBy", "ModelTime"}
-	rt := reflect.TypeOf(probeRow{})
+	want := []string{"Model", "ControlBy", "ModelTime", "Name"}
+	rt := reflect.TypeFor[probeRow]()
 	got := make([]string, 0, rt.NumField())
-	for i := 0; i < rt.NumField(); i++ {
-		got = append(got, rt.Field(i).Name)
+	for field := range rt.Fields() {
+		got = append(got, field.Name)
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("embedded field names = %v, want %v", got, want)

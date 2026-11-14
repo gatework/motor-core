@@ -20,7 +20,7 @@ func TestGetHandlerFuncReturnsRegisteredHandler(t *testing.T) {
 	if !ok {
 		t.Fatal("GetHandlerFunc reported false for a key that was registered")
 	}
-	got(nil) //nolint:staticcheck // exercising the stored closure, not gin's dispatch
+	got(nil)
 	if !called {
 		t.Error("the handler returned by GetHandlerFunc is not the one that was registered")
 	}

@@ -30,6 +30,7 @@ var (
 	digitDriver     *base64Captcha.DriverDigit
 )
 
+// DriverStringFunc generates a string challenge using the shared immutable font driver.
 func DriverStringFunc() (id, b64s, answer string, err error) {
 	stringDriverOnce.Do(func() {
 		stringDriver = base64Captcha.NewDriverString(
@@ -44,6 +45,7 @@ func DriverStringFunc() (id, b64s, answer string, err error) {
 	return captcha.Generate()
 }
 
+// DriverDigitFunc generates a numeric challenge using the shared immutable digit driver.
 func DriverDigitFunc() (id, b64s, answer string, err error) {
 	digitDriverOnce.Do(func() {
 		digitDriver = base64Captcha.NewDriverDigit(80, 240, 4, 0.7, 80)
@@ -53,9 +55,9 @@ func DriverDigitFunc() (id, b64s, answer string, err error) {
 }
 
 // Verify 校验验证码
-func Verify(id, code string, clear bool) bool {
+func Verify(id, code string, consume bool) bool {
 	if id == "" || code == "" {
 		return false
 	}
-	return base64Captcha.DefaultMemStore.Verify(id, code, clear)
+	return base64Captcha.DefaultMemStore.Verify(id, code, consume)
 }

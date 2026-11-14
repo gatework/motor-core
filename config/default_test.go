@@ -16,6 +16,7 @@ import (
 )
 
 func createFileForIssue18(t *testing.T, content string) *os.File {
+	t.Helper()
 	data := []byte(content)
 	path := filepath.Join(os.TempDir(), fmt.Sprintf("file.%d", time.Now().UnixNano()))
 	fh, err := os.Create(path)
@@ -31,6 +32,7 @@ func createFileForIssue18(t *testing.T, content string) *os.File {
 }
 
 func createFileForTest(t *testing.T) *os.File {
+	t.Helper()
 	data := []byte(`{"foo": "bar"}`)
 	path := filepath.Join(os.TempDir(), fmt.Sprintf("file.%d", time.Now().UnixNano()))
 	fh, err := os.Create(path)
@@ -108,7 +110,7 @@ func TestConfigMerge(t *testing.T) {
 		fh.Close()
 		os.Remove(path)
 	}()
-	os.Setenv("AMQP_HOST", "rabbit.testing.com")
+	t.Setenv("AMQP_HOST", "rabbit.testing.com")
 
 	conf, err := New()
 	if err != nil {
@@ -132,6 +134,7 @@ func TestConfigMerge(t *testing.T) {
 }
 
 func equalS(t *testing.T, actual, expect string) {
+	t.Helper()
 	if actual != expect {
 		t.Errorf("Expected %s but got %s", actual, expect)
 	}
@@ -147,7 +150,7 @@ func TestConfigWatcherDirtyOverrite(t *testing.T) {
 
 	ss := make([]source.Source, l)
 
-	for i := 0; i < l; i++ {
+	for i := range l {
 		ss[i] = memory.NewSource(memory.WithJSON([]byte(fmt.Sprintf(`{"key%d": "val%d"}`, i, i))))
 	}
 

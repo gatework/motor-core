@@ -1,5 +1,6 @@
 package config
 
+// Application configures the host HTTP server and application identity.
 type Application struct {
 	ReadTimeout   int
 	WriterTimeout int

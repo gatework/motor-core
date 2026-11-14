@@ -50,7 +50,11 @@ run_bench() {
   echo "==> benchmarking $label (count=$COUNT, pattern=$PATTERN)"
   # -run '^$' keeps ordinary tests out of the timings.
   ( cd "$dir" && go test -run '^$' -bench "$PATTERN" -benchmem -count "$COUNT" ./... ) \
-    2>&1 | tee "$out" | grep -E '^(Benchmark|FAIL|ok)' || true
+    2>&1 | tee "$out"
+  if ! grep -q '^Benchmark' "$out"; then
+    echo "bench-compare: no benchmark results for $label" >&2
+    return 1
+  fi
 }
 
 run_bench "$BASE_TREE" "$WORKDIR/base.txt" "base"

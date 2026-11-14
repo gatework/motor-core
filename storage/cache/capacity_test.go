@@ -7,32 +7,32 @@ import (
 	"time"
 )
 
-// Without a cap the cache grows until the process dies, and reaching that state
+// Without a capacity the cache grows until the process dies, and reaching that state
 // needs no bug - an unauthenticated endpoint that writes one entry per request
 // is enough. These pin the bound and what it costs.
 
-// TestCapacityIsBounded writes far past the cap with distinct keys, which is
+// TestCapacityIsBounded writes far past the capacity with distinct keys, which is
 // the shape of the captcha endpoint under load: a fresh key every time, none of
 // them read again.
 func TestCapacityIsBounded(t *testing.T) {
 	ctx := context.Background()
-	const cap = 3200 // 100 per shard
-	m := New(Options{MaxEntries: cap})
+	const capacity = 3200 // 100 per shard
+	m := New(Options{MaxEntries: capacity})
 	defer func() { _ = m.Close() }()
 
-	for i := 0; i < cap*10; i++ {
+	for i := range capacity * 10 {
 		if err := m.Set(ctx, "k"+strconv.Itoa(i), "v", time.Hour); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	got := countEntries(m)
-	if got > cap {
-		t.Errorf("cache holds %d entries with a cap of %d", got, cap)
+	if got > capacity {
+		t.Errorf("cache holds %d entries with a capacity of %d", got, capacity)
 	}
-	// A cap that evicts far more than it must would make the cache useless.
-	if got < cap/2 {
-		t.Errorf("cache holds only %d entries with a cap of %d; eviction is too eager", got, cap)
+	// A capacity that evicts far more than it must would make the cache useless.
+	if got < capacity/2 {
+		t.Errorf("cache holds only %d entries with a capacity of %d; eviction is too eager", got, capacity)
 	}
 }
 
@@ -40,12 +40,12 @@ func TestCapacityIsBounded(t *testing.T) {
 // shard full of expired entries should need no eviction of live ones.
 func TestEvictionPrefersExpiredEntries(t *testing.T) {
 	ctx := context.Background()
-	const cap = 3200
-	m := New(Options{MaxEntries: cap})
+	const capacity = 3200
+	m := New(Options{MaxEntries: capacity})
 	defer func() { _ = m.Close() }()
 
 	// Fill with entries that expire almost immediately.
-	for i := 0; i < cap; i++ {
+	for i := range capacity {
 		if err := m.Set(ctx, "old"+strconv.Itoa(i), "v", time.Millisecond); err != nil {
 			t.Fatal(err)
 		}
@@ -54,14 +54,14 @@ func TestEvictionPrefersExpiredEntries(t *testing.T) {
 
 	// Now write live entries. They should displace the expired ones.
 	const live = 1000
-	for i := 0; i < live; i++ {
+	for i := range live {
 		if err := m.Set(ctx, "live"+strconv.Itoa(i), "v", time.Hour); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	survived := 0
-	for i := 0; i < live; i++ {
+	for i := range live {
 		if _, err := m.Get(ctx, "live"+strconv.Itoa(i)); err == nil {
 			survived++
 		}
@@ -83,7 +83,7 @@ func TestUnlimitedIsOptOut(t *testing.T) {
 	defer func() { _ = m.Close() }()
 
 	const n = 5000
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if err := m.Set(ctx, "k"+strconv.Itoa(i), "v", time.Hour); err != nil {
 			t.Fatal(err)
 		}
@@ -94,7 +94,7 @@ func TestUnlimitedIsOptOut(t *testing.T) {
 }
 
 // TestDefaultConstructorIsBounded is the one that matters in production: the
-// constructors everything actually calls must carry the cap, not just the
+// constructors everything actually calls must carry the capacity, not just the
 // options form nobody uses.
 func TestDefaultConstructorIsBounded(t *testing.T) {
 	for name, m := range map[string]*Memory{
@@ -121,7 +121,7 @@ func BenchmarkSetAtCapacity(b *testing.B) {
 	m := New(Options{MaxEntries: capacity})
 	defer func() { _ = m.Close() }()
 
-	for i := 0; i < capacity; i++ {
+	for i := range capacity {
 		if err := m.Set(ctx, "fill"+strconv.Itoa(i), "v", time.Hour); err != nil {
 			b.Fatal(err)
 		}
@@ -129,7 +129,7 @@ func BenchmarkSetAtCapacity(b *testing.B) {
 
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := range b.N {
 		if err := m.Set(ctx, "new"+strconv.Itoa(i), "v", time.Hour); err != nil {
 			b.Fatal(err)
 		}

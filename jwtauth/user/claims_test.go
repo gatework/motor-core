@@ -2,6 +2,7 @@ package user
 
 import (
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -13,7 +14,7 @@ import (
 func contextWith(claims jwt.MapClaims) *gin.Context {
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c.Request = httptest.NewRequest("GET", "/", nil)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
 	c.Set(jwt.JwtPayloadKey, claims)
 	return c
 }
@@ -31,10 +32,10 @@ func TestClaimsOfTheWrongTypeDoNotPanic(t *testing.T) {
 		"deptkey":  99.0,
 	})
 
-	if got := UserID(c); got != 0 {
+	if got := ID(c); got != 0 {
 		t.Errorf("UserID = %d, want 0", got)
 	}
-	if got := UserName(c); got != "" {
+	if got := Name(c); got != "" {
 		t.Errorf("UserName = %q, want empty", got)
 	}
 	if got := RoleName(c); got != "" {
@@ -66,7 +67,7 @@ func TestAnIdentityBeyondFloat64PrecisionSurvives(t *testing.T) {
 	}
 
 	c := contextWith(jwt.MapClaims{"identity": json.Number("9007199254740993")})
-	if got := UserIDString(c); got != "9007199254740993" {
+	if got := IDString(c); got != "9007199254740993" {
 		t.Errorf("UserIDString = %q, want the digits unchanged", got)
 	}
 }
@@ -81,10 +82,10 @@ func TestOrdinaryClaimsStillRead(t *testing.T) {
 		"deptkey":  "hq",
 	})
 
-	if got := UserID(c); got != 7 {
+	if got := ID(c); got != 7 {
 		t.Errorf("UserID = %d, want 7", got)
 	}
-	if got := UserName(c); got != "alice" {
+	if got := Name(c); got != "alice" {
 		t.Errorf("UserName = %q, want alice", got)
 	}
 	if got := RoleID(c); got != 3 {
@@ -107,7 +108,7 @@ func TestNumericClaimsAreNotNames(t *testing.T) {
 		{"nice": float64(42), "rolekey": float64(7), "deptkey": float64(9)},
 	} {
 		c := contextWith(claims)
-		if got := UserName(c); got != "" {
+		if got := Name(c); got != "" {
 			t.Errorf("UserName = %q, want empty", got)
 		}
 		if got := RoleName(c); got != "" {

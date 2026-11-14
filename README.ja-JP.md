@@ -5,7 +5,7 @@ See [migration from go-admin-core](docs/migration/motor-core.md).
 
 Forked from [go-admin-team/go-admin-core](https://github.com/go-admin-team/go-admin-core).
 
-[![Go Version](https://img.shields.io/badge/Go-1.27.1+-00ADD8?style=flat&logo=go)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/Go-1.27.4+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja-JP.md)
@@ -14,8 +14,6 @@ Forked from [go-admin-team/go-admin-core](https://github.com/go-admin-team/go-ad
 
 ### 📝 Logger モジュール（エンタープライズ向けロギング）
 
-- **非同期ロガー** - 45 倍の高速化（3,358ns → 75ns）、100k+ QPS に対応
-- **サンプリングロガー** - 29 倍の高速化（3,357ns → 116ns）、出力頻度を自動制御
 - **マスキングロガー** - 機密情報（電話番号・パスワード・メールアドレスなど）を自動マスクし、コンプライアンス要件に対応
 - **Logrus アダプター** - Logrus エコシステムに完全対応、50 種類以上の Hook が利用可能
 - **本番向け設定** - ベストプラクティス（非同期 + サンプリング + マスキング）を同梱
@@ -47,119 +45,58 @@ Forked from [go-admin-team/go-admin-core](https://github.com/go-admin-team/go-ad
 go get -u github.com/gatework/motor-core
 ```
 
-**動作要件:** Go 1.27.1 以降（`go.mod` の `go` ディレクティブを参照）
+**動作要件:** Go 1.27.4 以降（`go.mod` の `go` ディレクティブを参照）
 
 ### 基本的なロギング
 
 ```go
 package main
 
-import "github.com/gatework/motor-core/logger"
+import (
+    "context"
+    "log"
 
-func main() {
-    // Logrus ロガーを生成
-    log := logger.NewLogrusLogger(
-        logger.WithPath("logs/app.log"),
-        logger.WithLevel(logger.InfoLevel),
-    )
-
-    log.Log(logger.InfoLevel, "Application started")
-    log.Fields(map[string]interface{}{
-        "user_id": 12345,
-        "action":  "login",
-    }).Log(logger.InfoLevel, "User action")
-}
-```
-
-### 高性能な非同期ロギング
-
-```go
-// 非同期ロガーを生成（高並行環境で推奨）
-baseLog := logger.NewLogrusLogger(
-    logger.WithPath("logs/app.log"),
-    logger.WithLevel(logger.InfoLevel),
+    "github.com/gatework/motor-core/logger"
 )
 
-asyncLog := logger.NewAsyncLogger(baseLog, logger.DefaultAsyncConfig)
-defer asyncLog.(interface{ Close() error }).Close()
-
-// 45 倍の高速化、レイテンシはわずか 75ns
-asyncLog.Log(logger.InfoLevel, "High performance logging")
-```
-
-### サンプリングロギング（頻度制御）
-
-```go
-// サンプリングロガーを生成（高頻度の重複ログを自動的に間引く）
-samplingLog := logger.NewSamplingLogger(baseLog, logger.DefaultSamplingConfig)
-
-// 毎秒最初の 100 件のみ記録し、以降は 100 件ごとに 1 件
-for i := 0; i < 10000; i++ {
-    samplingLog.Log(logger.InfoLevel, "High frequency log")
-}
-```
-
-### マスキングロギング（データ保護）
-
-```go
-// マスキングロガーを生成（機密情報を自動処理）
-sanitizerLog := logger.NewSanitizerLogger(baseLog, logger.DefaultSanitizerConfig)
-
-sanitizerLog.Fields(map[string]interface{}{
-    "phone":    "13812345678",  // 自動マスク → "138****5678"
-    "password": "secret123",    // 自動マスク → "[REDACTED]"
-    "email":    "user@example.com", // 自動マスク → "u***@example.com"
-}).Log(logger.InfoLevel, "User login")
-```
-
-### 本番向け構成（推奨）
-
-```go
-// 組み合わせ: マスキング → サンプリング → 非同期
-sanitized := logger.NewSanitizerLogger(baseLog, logger.DefaultSanitizerConfig)
-sampled := logger.NewSamplingLogger(sanitized, logger.DefaultSamplingConfig)
-asyncLog := logger.NewAsyncLogger(sampled, logger.DefaultAsyncConfig)
-defer asyncLog.(interface{ Close() error }).Close()
-
-// 34 倍の高速化 + データ保護 + 頻度制御
-asyncLog.Fields(map[string]interface{}{
-    "phone":   "13812345678",
-    "user_id": 12345,
-}).Log(logger.InfoLevel, "Production logging")
-```
-
----
-
-## 📦 設定管理
-
-### 設定ファイルの読み込み
-
-```go
-package main
-
-import "github.com/gatework/motor-core/config"
-
 func main() {
-    source := config.FileSource("config.json")
-    config.Setup(source, func() {
-        // 設定変更時のコールバック
-    })
+    root, err := logger.NewLogrusLogger(
+        logger.WithPath("logs/app.log"),
+        logger.WithLevel(logger.InfoLevel),
+        logger.WithEncoder("json"),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer root.Close()
+    root.With(logger.UserID(12345)).Log(context.Background(), logger.InfoLevel, "started")
 }
 ```
 
----
+See [structured logging](logger/README_ADVANCED.md) for sampling, redaction,
+async delivery, and resource ownership. Keep the concrete root for Close/Sync;
+field views borrow it. Configuration watchers publish settings only: hosts
+explicitly create, inject, and retire application resources.
 
-## 📊 パフォーマンス
+## Configuration
 
-| 機能 | 高速化 | レイテンシ | メモリ使用量 | 適した用途 |
-|------|---------|------|---------|---------|
-| 非同期ロガー | 45x | 75ns | 120 B/op | 高並行での書き込み |
-| サンプリングロガー | 29x | 116ns | 16 B/op | 高頻度の重複ログ |
-| 本番向け構成 | 34x | 98ns | 149 B/op | 本番環境で推奨 |
+```go
+manager, err := config.New(config.WithSource(file.NewSource(file.WithPath("config.json"))))
+if err != nil {
+    return err
+}
+defer manager.Close()
+```
 
-**測定環境:** Apple M1 Pro | Go 1.27.1.1 | Race Detector 検証済み
+The example uses `config` and `config/source/file` from this module. See
+[configuration](config/README.md) and [migration](docs/migration/motor-core.md).
 
----
+## Performance measurement
+
+Run `make bench` for a smoke check. Use `BenchmarkDelivery` to compare async
+admission and actual sink delivery: it reports written/s and dropped/op and
+includes draining accepted entries. Sampling and dropping are not throughput
+gains. Compare on the same machine and toolchain, including p99 under mixed load.
 
 ## 🧪 テスト
 

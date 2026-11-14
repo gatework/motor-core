@@ -37,18 +37,6 @@ func newReloadProbe() *reloadProbe {
 	}
 }
 
-func (p *reloadProbe) attach(c *Config) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.cfg = c
-}
-
-func (p *reloadProbe) config() *Config {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.cfg
-}
-
 func (p *reloadProbe) OnChange() {
 	signal(p.entered)
 
@@ -56,7 +44,7 @@ func (p *reloadProbe) OnChange() {
 	if c != nil {
 		// All three read entry points, because all three take RLock.
 		_ = c.Map()
-		var dst map[string]interface{}
+		var dst map[string]any
 		_ = c.Scan(&dst)
 		signal2(p.observed, c.Get("key").String(""))
 	}
@@ -205,4 +193,16 @@ func writeUntil(t *testing.T, src source.Source, entered <-chan struct{}, budget
 			return false
 		}
 	}
+}
+
+func (p *reloadProbe) attach(c *Config) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.cfg = c
+}
+
+func (p *reloadProbe) config() *Config {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.cfg
 }

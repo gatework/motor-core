@@ -5,7 +5,7 @@ See [migration from go-admin-core](docs/migration/motor-core.md).
 
 Forked from [go-admin-team/go-admin-core](https://github.com/go-admin-team/go-admin-core).
 
-[![Go Version](https://img.shields.io/badge/Go-1.27.1+-00ADD8?style=flat&logo=go)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/Go-1.27.4+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja-JP.md)
@@ -14,8 +14,6 @@ Forked from [go-admin-team/go-admin-core](https://github.com/go-admin-team/go-ad
 
 ### 📝 Logger Module (Enterprise-Grade Logging Solution)
 
-- **Async Logger** - 45x performance boost (3,358ns → 75ns), supports 100k+ QPS
-- **Sampling Logger** - 29x performance boost (3,357ns → 116ns), intelligent frequency control
 - **Sanitizer Logger** - Auto-sanitize sensitive data (phone, password, email, etc.), compliance-ready
 - **Logrus Adapter** - Full Logrus ecosystem support with 50+ hooks available
 - **Production-Ready Config** - Built-in best practices (async + sampling + sanitization)
@@ -35,7 +33,7 @@ Forked from [go-admin-team/go-admin-core](https://github.com/go-admin-team/go-ad
 - [x] Configuration management (multiple data sources)
 - [x] Log writer (file rotation support)
 
-> Every change runs the race detector, staticcheck on two platforms, and
+> Every change runs the race detector, the shared lint rules, and
 > allocation budgets on the paths that execute per request.
 
 ---
@@ -48,119 +46,64 @@ Forked from [go-admin-team/go-admin-core](https://github.com/go-admin-team/go-ad
 go get -u github.com/gatework/motor-core
 ```
 
-**System Requirements:** Go 1.27.1 or higher (see the `go` directive in `go.mod`)
+**System Requirements:** Go 1.27.4 or higher (see the `go` directive in `go.mod`)
 
 ### Basic Logging
 
 ```go
 package main
 
-import "github.com/gatework/motor-core/logger"
+import (
+    "context"
+    "log"
 
-func main() {
-    // Create Logrus logger instance
-    log := logger.NewLogrusLogger(
-        logger.WithPath("logs/app.log"),
-        logger.WithLevel(logger.InfoLevel),
-    )
-    
-    log.Log(logger.InfoLevel, "Application started")
-    log.Fields(map[string]interface{}{
-        "user_id": 12345,
-        "action":  "login",
-    }).Log(logger.InfoLevel, "User action")
-}
-```
-
-### High-Performance Async Logger
-
-```go
-// Create async logger (recommended for high-concurrency scenarios)
-baseLog := logger.NewLogrusLogger(
-    logger.WithPath("logs/app.log"),
-    logger.WithLevel(logger.InfoLevel),
+    "github.com/gatework/motor-core/logger"
 )
 
-asyncLog := logger.NewAsyncLogger(baseLog, logger.DefaultAsyncConfig)
-defer asyncLog.(interface{ Close() error }).Close()
-
-// 45x performance boost, only 75ns latency
-asyncLog.Log(logger.InfoLevel, "High performance logging")
-```
-
-### Sampling Logger (Frequency Control)
-
-```go
-// Create sampling logger (auto-filter high-frequency duplicate logs)
-samplingLog := logger.NewSamplingLogger(baseLog, logger.DefaultSamplingConfig)
-
-// Only logs first 100 per second, then 1 out of every 100
-for i := 0; i < 10000; i++ {
-    samplingLog.Log(logger.InfoLevel, "High frequency log")
-}
-```
-
-### Sanitizer Logger (Data Security)
-
-```go
-// Create sanitizer logger (auto-handle sensitive data)
-sanitizerLog := logger.NewSanitizerLogger(baseLog, logger.DefaultSanitizerConfig)
-
-sanitizerLog.Fields(map[string]interface{}{
-    "phone":    "13812345678",  // Auto-sanitized → "138****5678"
-    "password": "secret123",    // Auto-sanitized → "[REDACTED]"
-    "email":    "user@example.com", // Auto-sanitized → "u***@example.com"
-}).Log(logger.InfoLevel, "User login")
-```
-
-### Production-Grade Configuration (Recommended)
-
-```go
-// Combine: Sanitizer → Sampling → Async
-sanitized := logger.NewSanitizerLogger(baseLog, logger.DefaultSanitizerConfig)
-sampled := logger.NewSamplingLogger(sanitized, logger.DefaultSamplingConfig)
-asyncLog := logger.NewAsyncLogger(sampled, logger.DefaultAsyncConfig)
-defer asyncLog.(interface{ Close() error }).Close()
-
-// 34x performance boost + data security + frequency control
-asyncLog.Fields(map[string]interface{}{
-    "phone":   "13812345678",
-    "user_id": 12345,
-}).Log(logger.InfoLevel, "Production logging")
-```
-
----
-
-## 📦 Configuration Management
-
-### Read Configuration Files
-
-```go
-package main
-
-import "github.com/gatework/motor-core/config"
-
 func main() {
-    source := config.FileSource("config.json")
-    config.Setup(source, func() {
-        // Configuration change callback
-    })
+    root, err := logger.NewLogrusLogger(
+        logger.WithPath("logs/app.log"),
+        logger.WithLevel(logger.InfoLevel),
+        logger.WithEncoder("json"),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer root.Close()
+    root.With(logger.UserID(12345)).Log(context.Background(), logger.InfoLevel, "started")
 }
 ```
 
----
+See [structured logging](logger/README_ADVANCED.md) for sampling, redaction,
+async delivery, and resource ownership. Keep the concrete root for Close/Sync;
+field views borrow it. Configuration watchers publish settings only: hosts
+explicitly create, inject, and retire application resources.
 
-## 📊 Performance Metrics
+## Configuration
 
-| Feature | Performance Boost | Latency | Memory | Use Case |
-|---------|------------------|---------|--------|----------|
-| Async Logger | 45x | 75ns | 120 B/op | High-concurrency writes |
-| Sampling Logger | 29x | 116ns | 16 B/op | High-frequency duplicate logs |
-| Production Config | 34x | 98ns | 149 B/op | Production environments |
+```go
+manager, err := config.New(config.WithSource(file.NewSource(file.WithPath("config.json"))))
+if err != nil {
+    return err
+}
+defer manager.Close()
+```
 
-**Test Environment:** Apple M1 Pro | Go 1.27.1.1 | Race Detector verified
+The example uses `config` and `config/source/file` from this module. See
+[configuration](config/README.md) and [migration](docs/migration/motor-core.md).
 
----
+## Performance measurement
+
+Run `make bench` for a smoke check. Use `BenchmarkDelivery` to compare async
+admission and actual sink delivery: it reports written/s and dropped/op and
+includes draining accepted entries. Sampling and dropping are not throughput
+gains. Compare on the same machine and toolchain, including p99 under mixed load.
+
+## Engineering standards
+
+Follow [go-standards v1.0.2](https://github.com/gatework/go-standards/blob/v1.0.2/STANDARD.md).
+Run `make check`; see [adoption status](docs/standards.md) for the remaining migration gaps.
+See [GitHub releases](docs/RELEASING.md) for exact-artifact publication.
 
 ## 🧪 Testing
 
@@ -184,7 +127,7 @@ make bench-compare BASE=origin/main
 **Enforced on every change:**
 
 - Race detector, every package
-- staticcheck for both darwin and linux
+- Shared lint, including staticcheck
 - The exported API snapshot in `api/core.txt` must match the code
 - Allocation budgets on the paths that run per request
 - Downstream consumers are built against this tree

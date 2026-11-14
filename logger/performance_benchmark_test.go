@@ -1,10 +1,9 @@
 package logger
 
-import "fmt"
-import "context"
-
 import (
 	"bytes"
+	"context"
+	"fmt"
 	"io"
 	"testing"
 	"time"
@@ -23,7 +22,7 @@ func BenchmarkLogrus_Simple(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		log.Log(context.Background(), InfoLevel, "simple log message")
 	}
 }
@@ -37,8 +36,8 @@ func BenchmarkLogrus_WithFields(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		log.With(FieldsFromMap(map[string]interface{}{
+	for range b.N {
+		log.With(FieldsFromMap(map[string]any{
 			"request_id": "req-12345",
 			"user_id":    123,
 			"latency":    100,
@@ -56,7 +55,7 @@ func BenchmarkLogrus_Logf(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		log.Log(context.Background(), InfoLevel, fmt.Sprintf("user %d logged in from %s", 123, "192.168.1.1"))
 	}
 }
@@ -71,7 +70,7 @@ func BenchmarkLogrus_Caller(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		log.Log(context.Background(), InfoLevel, "message with caller")
 	}
 }
@@ -89,7 +88,7 @@ func BenchmarkAsync_Baseline(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		log.Log(context.Background(), InfoLevel, "sync log message")
 	}
 }
@@ -110,7 +109,7 @@ func BenchmarkAsync_SmallBuffer(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		log.Log(context.Background(), InfoLevel, "async log message")
 	}
 }
@@ -131,7 +130,7 @@ func BenchmarkAsync_LargeBuffer(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		log.Log(context.Background(), InfoLevel, "async log message")
 	}
 }
@@ -152,8 +151,8 @@ func BenchmarkAsync_WithFields(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		log.With(FieldsFromMap(map[string]interface{}{
+	for range b.N {
+		log.With(FieldsFromMap(map[string]any{
 			"request_id": "req-12345",
 			"user_id":    123,
 		})...,
@@ -202,7 +201,7 @@ func BenchmarkSampling_First10Then1(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		log.Log(context.Background(), InfoLevel, "sampled log message")
 	}
 }
@@ -221,7 +220,7 @@ func BenchmarkSampling_First100Then10(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		log.Log(context.Background(), InfoLevel, "sampled log message")
 	}
 }
@@ -240,8 +239,8 @@ func BenchmarkSampling_WithFields(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		log.With(FieldsFromMap(map[string]interface{}{
+	for range b.N {
+		log.With(FieldsFromMap(map[string]any{
 			"endpoint": "/api/users",
 			"status":   200,
 		})...,
@@ -262,7 +261,7 @@ func BenchmarkSanitizer_NoSensitiveFields(b *testing.B) {
 
 	log := NewSanitizerLogger(baseLog, DefaultSanitizerConfig)
 
-	fields := map[string]interface{}{
+	fields := map[string]any{
 		"user_id":    123,
 		"request_id": "req-12345",
 		"latency":    100,
@@ -270,7 +269,7 @@ func BenchmarkSanitizer_NoSensitiveFields(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		log.With(FieldsFromMap(fields)...).Log(context.Background(), InfoLevel, "no sensitive fields")
 	}
 }
@@ -284,7 +283,7 @@ func BenchmarkSanitizer_WithPassword(b *testing.B) {
 
 	log := NewSanitizerLogger(baseLog, DefaultSanitizerConfig)
 
-	fields := map[string]interface{}{
+	fields := map[string]any{
 		"username": "john",
 		"password": "secret123",
 		"email":    "john@example.com",
@@ -292,7 +291,7 @@ func BenchmarkSanitizer_WithPassword(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		log.With(FieldsFromMap(fields)...).Log(context.Background(), InfoLevel, "with password")
 	}
 }
@@ -306,7 +305,7 @@ func BenchmarkSanitizer_MultipleSensitive(b *testing.B) {
 
 	log := NewSanitizerLogger(baseLog, DefaultSanitizerConfig)
 
-	fields := map[string]interface{}{
+	fields := map[string]any{
 		"user_id":         123,
 		"password":        "secret123",
 		"credit_card":     "1234-5678-9012-3456",
@@ -317,7 +316,7 @@ func BenchmarkSanitizer_MultipleSensitive(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		log.With(FieldsFromMap(fields)...).Log(context.Background(), InfoLevel, "multiple sensitive fields")
 	}
 }
@@ -346,7 +345,7 @@ func BenchmarkCombined_AsyncSamplingSanitizer(b *testing.B) {
 	})
 	defer any(log).(interface{ Close() error }).Close()
 
-	fields := map[string]interface{}{
+	fields := map[string]any{
 		"user_id":  123,
 		"password": "secret123",
 		"endpoint": "/api/login",
@@ -354,7 +353,7 @@ func BenchmarkCombined_AsyncSamplingSanitizer(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		log.With(FieldsFromMap(fields)...).Log(context.Background(), InfoLevel, "combined features")
 	}
 }
@@ -389,7 +388,7 @@ func BenchmarkCombined_Production(b *testing.B) {
 	})
 	defer any(log).(interface{ Close() error }).Close()
 
-	fields := map[string]interface{}{
+	fields := map[string]any{
 		"request_id": "req-12345",
 		"user_id":    123,
 		"method":     "POST",
@@ -421,8 +420,8 @@ func BenchmarkFormatter_Console(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		log.With(FieldsFromMap(map[string]interface{}{
+	for range b.N {
+		log.With(FieldsFromMap(map[string]any{
 			"user_id": 123,
 			"action":  "login",
 		})...,
@@ -442,8 +441,8 @@ func BenchmarkFormatter_JSON(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		log.With(FieldsFromMap(map[string]interface{}{
+	for range b.N {
+		log.With(FieldsFromMap(map[string]any{
 			"user_id": 123,
 			"action":  "login",
 		})...,
@@ -487,14 +486,14 @@ func BenchmarkStress_LargeFields(b *testing.B) {
 	)
 
 	// 模拟包含大量字段的日志
-	fields := make(map[string]interface{}, 50)
-	for i := 0; i < 50; i++ {
+	fields := make(map[string]any, 50)
+	for i := range 50 {
 		fields[string(rune('a'+i%26))+string(rune('0'+i%10))] = i
 	}
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		log.With(FieldsFromMap(fields)...).Log(context.Background(), InfoLevel, "large fields")
 	}
 }
@@ -507,17 +506,17 @@ func BenchmarkStress_DeepNesting(b *testing.B) {
 	)
 
 	// 模拟深层嵌套的字段
-	fields := map[string]interface{}{
-		"request": map[string]interface{}{
-			"headers": map[string]interface{}{
+	fields := map[string]any{
+		"request": map[string]any{
+			"headers": map[string]any{
 				"user-agent": "Mozilla/5.0",
-				"auth": map[string]interface{}{
+				"auth": map[string]any{
 					"token": "secret",
 					"type":  "Bearer",
 				},
 			},
-			"body": map[string]interface{}{
-				"user": map[string]interface{}{
+			"body": map[string]any{
+				"user": map[string]any{
 					"id":    123,
 					"name":  "John",
 					"email": "john@example.com",
@@ -528,7 +527,7 @@ func BenchmarkStress_DeepNesting(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		log.With(FieldsFromMap(fields)...).Log(context.Background(), InfoLevel, "deep nesting")
 	}
 }

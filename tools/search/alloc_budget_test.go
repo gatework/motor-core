@@ -12,7 +12,7 @@ import "testing"
 // pins that: a change that puts the parse back in front fails here rather than
 // quietly costing every list request fifty allocations again.
 func TestResolveAllocationBudget(t *testing.T) {
-	q := benchSearchDTO{BenchPagination: BenchPagination{PageIndex: 1, PageSize: 10}}
+	q := benchSearchDTO{PageIndex: 1, PageSize: 10}
 
 	// Warm once; the first call through a reflect.Type populates caches inside
 	// the runtime that later calls reuse.

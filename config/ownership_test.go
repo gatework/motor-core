@@ -1,13 +1,14 @@
 package config
 
 import (
+	"sync"
+	"testing"
+	"time"
+
 	"github.com/gatework/motor-core/config/loader"
 	loadermemory "github.com/gatework/motor-core/config/loader/memory"
 	"github.com/gatework/motor-core/config/source"
 	sourcememory "github.com/gatework/motor-core/config/source/memory"
-	"sync"
-	"testing"
-	"time"
 )
 
 type ownedSource struct {

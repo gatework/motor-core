@@ -1,8 +1,7 @@
 GO ?= go
 
-# Integration tests that need a live MySQL are guarded by testing.Short(),
-# so every target below runs with -short. Nothing is excluded from the race
-# target; anything that has to be would belong in docs/known-issues.md.
+# Shared checks run the full race suite. External integration fixtures are
+# explicitly selected through environment variables documented by their tests.
 
 .PHONY: all build vet test test-race canary-test bench bench-compare soak lint vuln tidy api-snapshot api-check ci
 
@@ -11,23 +10,11 @@ all: ci
 build:
 	$(GO) build ./...
 
-vet:
-	$(GO) vet ./...
-
-test:
-	$(GO) test -short ./...
-
 test-race:
 	$(GO) test -short -race -timeout 600s ./...
 
 canary-test:
 	scripts/canary-test.sh
-
-# Pinned, because a gate whose verdict can change without a code change is not
-# a gate. Analysed for the host and for linux: a file behind a build tag is
-# invisible to a run on another platform, which is how a finding in
-# watcher_linux.go stayed hidden from every local run and failed in CI.
-STATICCHECK ?= honnef.co/go/tools/cmd/staticcheck@v0.8.2
 
 # bench runs every benchmark once, briefly. It is a smoke test that the
 # benchmarks still compile and run - not a measurement. For numbers worth
@@ -58,26 +45,6 @@ bench-compare:
 soak:
 	$(GO) test -race -timeout 1800s -run 'Soak|Leak|Stall|Reclaim|Release' ./...
 
-lint:
-	@tmp=$$(mktemp -d); \
-	GOBIN=$$tmp $(GO) install $(STATICCHECK) || { rm -rf $$tmp; exit 1; }; \
-	targets="$$($(GO) env GOOS)"; \
-	case "$$targets" in linux) ;; *) targets="$$targets linux";; esac; \
-	status=0; \
-	for os in $$targets; do \
-		echo "staticcheck GOOS=$$os"; \
-		GOOS=$$os $$tmp/staticcheck ./... || status=1; \
-	done; \
-	rm -rf $$tmp; \
-	exit $$status
-
-vuln:
-	$(GO) run golang.org/x/vuln/cmd/govulncheck@latest ./...
-
-tidy:
-	$(GO) mod tidy
-	git diff --exit-code go.mod go.sum
-
 api-snapshot:
 	scripts/api-snapshot.sh
 
@@ -86,4 +53,19 @@ api-snapshot:
 api-check: api-snapshot
 	git diff --exit-code api/
 
-ci: tidy build vet lint test-race api-check
+ci: check
+
+CHECK_EXTRA := build canary-test api-check language release-check
+include standard.mk
+
+# Limit compiler parallelism; retain all shared checks and full race tests.
+export GOFLAGS := -mod=readonly -p=2
+
+.PHONY: language
+language:
+	scripts/check-language.sh $(BASE)
+
+.PHONY: release-check
+release-check:
+	python3 scripts/test_package.py
+	python3 scripts/test_release.py

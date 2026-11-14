@@ -56,7 +56,7 @@ func TestKeyMatch2CacheIsBounded(t *testing.T) {
 	})
 
 	before := keyMatch2CacheSize.Load()
-	for i := 0; i < keyMatchCacheLimit+2000; i++ {
+	for i := range keyMatchCacheLimit + 2000 {
 		if _, err := KeyMatch2("/api/v1/x", "/api/v1/unbounded"+strconv.Itoa(i)+"/:id"); err != nil {
 			t.Fatal(err)
 		}
@@ -82,10 +82,10 @@ func TestKeyMatch2MalformedPatternDoesNotPanic(t *testing.T) {
 func TestKeyMatch2ConcurrentAgrees(t *testing.T) {
 	patterns := []string{"/api/v1/dept/:id", "/api/v1/*", "/api/v1/dept", "/:a/:b"}
 	done := make(chan struct{})
-	for g := 0; g < 8; g++ {
+	for g := range 8 {
 		go func(g int) {
 			defer func() { done <- struct{}{} }()
-			for i := 0; i < 2000; i++ {
+			for i := range 2000 {
 				p := patterns[i%len(patterns)]
 				got, err := KeyMatch2("/api/v1/dept/9", p)
 				if err != nil {
@@ -99,7 +99,7 @@ func TestKeyMatch2ConcurrentAgrees(t *testing.T) {
 			}
 		}(g)
 	}
-	for g := 0; g < 8; g++ {
+	for range 8 {
 		<-done
 	}
 }

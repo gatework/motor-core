@@ -1,158 +1,149 @@
 package api
 
 import (
+	"encoding/xml"
 	"errors"
-	"github.com/gin-gonic/gin/binding"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"reflect"
-	"strings"
 	"sync"
+
+	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
+	"github.com/gin-gonic/gin/codec/json"
+	"github.com/goccy/go-yaml"
 )
 
-const (
-	_ uint8 = iota
-	json
-	xml
-	yaml
-	form
-	query
-)
-
-var constructor = &bindConstructor{}
-
-// bindingOrder 固定 body 类 binding 的执行顺序：json/xml/yaml/form/query 在前，uri（nil binding）恒定放最后。
-// 根因：gin 每个 binding 阶段都会跑一次完整 struct validator。若 uri 阶段先于 json，
-// 则 json 字段（此时尚未填充、为零值）的 binding:"required" 会被 validator 误判失败。
-// 旧实现用 map[uint8]binding.Binding + for range 返回，map 遍历顺序随机，
-// 导致所有「同含 uri+json 且 json 字段有 required」的 PUT/POST 接口约 50% 概率间歇性参数校验失败。
-var bindingOrder = []uint8{json, xml, yaml, form, query}
-
-// The cache holds the finished []binding.Binding rather than the raw []uint8
-// from resolveType: the raw form contains many duplicates once embedded structs
-// are walked, so caching it would mean de-duplicating on every request. Keys are
-// reflect.Type, not its string form, so identically named types in different
-// packages cannot collide.
-type bindConstructor struct {
-	cache sync.Map // reflect.Type → []binding.Binding
+type mappingKey struct {
+	typ reflect.Type
+	tag string
 }
 
-func (e *bindConstructor) bindingsFor(d any) ([]binding.Binding, error) {
-	t := reflect.TypeOf(d)
-	if t == nil || t.Kind() != reflect.Pointer || t.Elem().Kind() != reflect.Struct || reflect.ValueOf(d).IsNil() {
-		return nil, errors.New("api: binding target must be a non-nil pointer to a struct")
-	}
-	if v, ok := e.cache.Load(t); ok {
-		return v.([]binding.Binding), nil
-	}
-
-	gbs := e.build(t)
-	e.cache.Store(t, gbs)
-	return gbs, nil
+type mappingPlan struct {
+	tagged bool
+	cyclic bool
 }
 
-// build resolves a type into a de-duplicated, ordered binder list. It runs only
-// on a cache miss.
-func (e *bindConstructor) build(t reflect.Type) []binding.Binding {
-	bs := e.resolveType(t.Elem(), make(map[reflect.Type]bool))
+var mappingPlans sync.Map
 
-	seen := make(map[uint8]bool, len(bs))
-	for _, b := range bs {
-		seen[b] = true
+func planMapping(typ reflect.Type, tag string) mappingPlan {
+	key := mappingKey{typ: typ, tag: tag}
+	if plan, ok := mappingPlans.Load(key); ok {
+		cached, _ := plan.(mappingPlan)
+		return cached
 	}
-
-	gbs := make([]binding.Binding, 0, len(seen))
-	for _, b := range bindingOrder {
-		if !seen[b] {
-			continue
-		}
-		switch b {
-		case json:
-			gbs = append(gbs, binding.JSON)
-		case xml:
-			gbs = append(gbs, binding.XML)
-		case yaml:
-			gbs = append(gbs, binding.YAML)
-		case form:
-			gbs = append(gbs, binding.Form)
-		case query:
-			gbs = append(gbs, binding.Query)
-		}
-	}
-	if seen[0] { // uri tag → nil binding，恒定放最后，确保 body 先绑定填充再做 uri
-		gbs = append(gbs, nil)
-	}
-	return gbs
-}
-
-// resolveElem unwraps pointers, slices, arrays and maps, then resolves the
-// struct type underneath.
-func (e *bindConstructor) resolveElem(t reflect.Type, visited map[reflect.Type]bool) []uint8 {
-	for {
-		switch t.Kind() {
-		case reflect.Ptr, reflect.Slice, reflect.Array, reflect.Map:
+	active := make(map[reflect.Type]bool)
+	var walk func(reflect.Type) mappingPlan
+	walk = func(t reflect.Type) mappingPlan {
+		for t.Kind() == reflect.Pointer {
+			if active[t] {
+				return mappingPlan{cyclic: true}
+			}
+			active[t] = true
+			defer delete(active, t)
 			t = t.Elem()
-		case reflect.Struct:
-			return e.resolveType(t, visited)
-		default:
-			return nil
 		}
+		if t.Kind() != reflect.Struct {
+			return mappingPlan{}
+		}
+		if active[t] {
+			return mappingPlan{cyclic: true}
+		}
+		active[t] = true
+		defer delete(active, t)
+		var plan mappingPlan
+		for field := range t.Fields() {
+			if field.PkgPath != "" && !field.Anonymous {
+				continue
+			}
+			value, tagged := field.Tag.Lookup(tag)
+			if value == "-" {
+				continue
+			}
+			child := walk(field.Type)
+			plan.tagged = plan.tagged || tagged || child.tagged
+			plan.cyclic = plan.cyclic || child.cyclic
+		}
+		return plan
 	}
+	plan := walk(typ)
+	actual, _ := mappingPlans.LoadOrStore(key, plan)
+	cached, _ := actual.(mappingPlan)
+	return cached
 }
 
-// resolveType resolves binders from a type; shared by resolve and by the
-// recursion into embedded structs.
-func (e *bindConstructor) resolveType(qType reflect.Type, visited map[reflect.Type]bool) []uint8 {
-	if visited[qType] {
+func mapRequestValues(dst any, values map[string][]string, tag string) error {
+	plan := planMapping(reflect.TypeOf(dst), tag)
+	if !plan.tagged {
 		return nil
 	}
-	visited[qType] = true
-	bs := make([]uint8, 0)
-	var tag reflect.StructTag
-	var ok bool
-
-	for i := 0; i < qType.NumField(); i++ {
-		field := qType.Field(i)
-
-		// Fields of an anonymously embedded struct bind as if they were declared
-		// on the outer struct, so their tags must be resolved too. Generated
-		// search DTOs have exactly this shape: pagination and ordering are
-		// grouped into embedded structs, so without recursion a DTO with no
-		// direct fields resolves to an empty binder list and pageIndex and the
-		// ordering parameters are silently ignored (issue #72).
-		if field.Anonymous {
-			bs = append(bs, e.resolveElem(field.Type, visited)...)
-		}
-
-		tag = field.Tag
-		if _, ok = tag.Lookup("json"); ok {
-			bs = append(bs, json)
-		}
-		if _, ok = tag.Lookup("xml"); ok {
-			bs = append(bs, xml)
-		}
-		if _, ok = tag.Lookup("yaml"); ok {
-			bs = append(bs, yaml)
-		}
-		if _, ok = tag.Lookup("form"); ok {
-			bs = append(bs, form)
-		}
-		if _, ok = tag.Lookup("query"); ok {
-			bs = append(bs, query)
-		}
-		if _, ok = tag.Lookup("uri"); ok {
-			bs = append(bs, 0)
-		}
-		// dive means the element type must be resolved as well. The previous
-		// implementation passed a reflect.Value into resolve, which then called
-		// reflect.TypeOf(d).Elem() on it — that operates on the reflect.Value
-		// struct itself and panics, so this branch never worked. Recurse on the
-		// type instead.
-		if t, ok := tag.Lookup("binding"); ok && strings.Contains(t, "dive") {
-			bs = append(bs, e.resolveElem(field.Type, visited)...)
-			continue
-		}
-		if t, ok := tag.Lookup("validate"); ok && strings.Contains(t, "dive") {
-			bs = append(bs, e.resolveElem(field.Type, visited)...)
-		}
+	// Gin allocates pointer children while walking struct fields, including
+	// empty mappings. Reject recursive shapes before that walk can overflow.
+	if plan.cyclic {
+		return fmt.Errorf("recursive %s mapping is not supported", tag)
 	}
-	return bs
+	return binding.MapFormWithTag(dst, values, tag)
+}
+
+func decodeRequest(c *gin.Context, dst any) error {
+	value := reflect.ValueOf(dst)
+	if !value.IsValid() || value.Kind() != reflect.Pointer || value.IsNil() || value.Elem().Kind() != reflect.Struct {
+		return errors.New("api: binding target must be a non-nil pointer to a struct")
+	}
+	if err := mapRequestValues(dst, c.Request.URL.Query(), "form"); err != nil {
+		return fmt.Errorf("api: decode query: %w", err)
+	}
+	if err := decodeBody(c, dst); err != nil && !errors.Is(err, io.EOF) {
+		return fmt.Errorf("api: decode body: %w", err)
+	}
+	params := make(map[string][]string, len(c.Params))
+	for _, param := range c.Params {
+		params[param.Key] = []string{param.Value}
+	}
+	if err := mapRequestValues(dst, params, "uri"); err != nil {
+		return fmt.Errorf("api: decode uri: %w", err)
+	}
+	return nil
+}
+
+func decodeBody(c *gin.Context, dst any) error {
+	r := c.Request
+	if r.Body == nil || r.Body == http.NoBody || r.ContentLength == 0 {
+		return nil
+	}
+	switch c.ContentType() {
+	case binding.MIMEJSON:
+		decoder := json.API.NewDecoder(r.Body)
+		if binding.EnableDecoderUseNumber {
+			decoder.UseNumber()
+		}
+		if binding.EnableDecoderDisallowUnknownFields {
+			decoder.DisallowUnknownFields()
+		}
+		return decoder.Decode(dst)
+	case binding.MIMEXML, binding.MIMEXML2:
+		return xml.NewDecoder(r.Body).Decode(dst)
+	case binding.MIMEYAML, "application/yaml", "text/yaml":
+		return yaml.NewDecoder(r.Body).Decode(dst)
+	case "", binding.MIMEPOSTForm:
+		// Match net/http's default form limit without merging query parameters
+		// back over the body, including on methods ParseForm does not decode.
+		const maxFormBytes = 10 << 20
+		data, err := io.ReadAll(io.LimitReader(r.Body, maxFormBytes+1))
+		if err != nil {
+			return err
+		}
+		if len(data) > maxFormBytes {
+			return errors.New("form body exceeds 10 mib")
+		}
+		values, err := url.ParseQuery(string(data))
+		if err != nil {
+			return err
+		}
+		return mapRequestValues(dst, values, "form")
+	default:
+		return fmt.Errorf("unsupported content type %q", c.ContentType())
+	}
 }

@@ -60,3 +60,43 @@ func TestStartFailureCancelsPeers(t *testing.T) {
 		t.Fatal("peer was not joined")
 	}
 }
+
+func TestRunReleasesStateBeforeReturning(t *testing.T) {
+	s := New()
+	for range 100 {
+		if err := s.Run(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Add("done", testRunnable{start: func(context.Context) error { return nil }}); err != nil {
+			t.Fatalf("completed run still owns registrations: %v", err)
+		}
+	}
+}
+
+func TestRunTimeoutReservesStateUntilWorkerReturns(t *testing.T) {
+	s := New(WithShutdownTimeout(10 * time.Millisecond))
+	started := make(chan struct{})
+	release := make(chan struct{})
+	defer close(release)
+	if err := s.Add("blocked", testRunnable{start: func(context.Context) error {
+		close(started)
+		<-release
+		return nil
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- s.Run(ctx) }()
+	<-started
+	cancel()
+	if err := <-done; !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("shutdown error = %v", err)
+	}
+	if err := s.Add("late", testRunnable{start: func(context.Context) error { return nil }}); err == nil {
+		t.Fatal("accepted registration while a timed-out worker was still running")
+	}
+	if err := s.Run(t.Context()); err == nil {
+		t.Fatal("started a second run while the first worker was still running")
+	}
+}

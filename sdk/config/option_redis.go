@@ -33,6 +33,7 @@ type TLS struct {
 	CA   string `yaml:"ca" json:"ca"`
 }
 
+// Options validates and resolves Redis connection settings without dialing.
 func (r RedisOptions) Options() (*goredis.Options, error) {
 	if r.URL != "" {
 		return goredis.ParseURL(r.URL)
@@ -43,6 +44,9 @@ func (r RedisOptions) Options() (*goredis.Options, error) {
 	opts := &goredis.Options{
 		Network: r.Network, Addr: r.Addr, Username: r.Username, Password: r.Password,
 		DB: r.DB, PoolSize: r.PoolSize, MaxRetries: r.MaxRetries,
+	}
+	if r.TLS == nil {
+		return opts, nil
 	}
 	var err error
 	opts.TLSConfig, err = r.TLS.config()
@@ -73,9 +77,6 @@ func (r RedisOptions) Open(ctx context.Context) (*goredis.Client, error) {
 }
 
 func (t *TLS) config() (*tls.Config, error) {
-	if t == nil {
-		return nil, nil
-	}
 	config := &tls.Config{MinVersion: tls.VersionTLS12}
 	if t.Cert != "" || t.Key != "" {
 		cert, err := tls.LoadX509KeyPair(t.Cert, t.Key)

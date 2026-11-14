@@ -39,10 +39,10 @@ func benchMiddleware() *GinJWTMiddleware {
 		MaxRefresh:       time.Hour,
 		TokenLookup:      "header: Authorization",
 		TokenHeadName:    "Bearer",
-		PayloadFunc: func(data interface{}) MapClaims {
+		PayloadFunc: func(data any) MapClaims {
 			return MapClaims{
 				IdentityKey:  1,
-				RoleIdKey:    1,
+				RoleIDKey:    1,
 				RoleKey:      "admin",
 				NiceKey:      "admin",
 				DataScopeKey: "2",

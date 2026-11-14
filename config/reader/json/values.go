@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	simple "github.com/bitly/go-simplejson"
+
 	"github.com/gatework/motor-core/config/reader"
 	"github.com/gatework/motor-core/config/source"
 )
@@ -57,14 +60,82 @@ func (j *jsonValues) Del(path ...string) {
 	j.sj.SetPath(path[:len(path)-1], vals.Interface())
 }
 
-func (j *jsonValues) Set(val interface{}, path ...string) {
-	data, err := json.Marshal(val)
-	if err != nil {
-		return
+func (j *jsonValues) Set(val any, path ...string) error {
+	// Config.Set supplies a normalized tree so no user marshaler runs while its
+	// lock is held. Direct Values users may still supply any JSON-encodable type.
+	owned, ok := cloneJSONValue(val, make(map[jsonVisit]bool))
+	if !ok {
+		data, err := json.Marshal(val)
+		if err != nil {
+			return err
+		}
+		value, err := simple.NewJson(data)
+		if err != nil {
+			return err
+		}
+		owned = value.Interface()
 	}
-	v, err := simple.NewJson(data)
-	if err == nil {
-		j.sj.SetPath(path, v.Interface())
+	j.sj.SetPath(path, owned)
+	return nil
+}
+
+type jsonVisit struct {
+	pointer uintptr
+	kind    reflect.Kind
+	length  int
+}
+
+// Recognize only plain JSON trees. Cyclic or custom input goes through the JSON
+// encoder, which reports invalid values and preserves custom marshaling rules.
+func cloneJSONValue(val any, active map[jsonVisit]bool) (any, bool) {
+	switch value := val.(type) {
+	case nil, bool, string:
+		return value, true
+	case json.Number:
+		_, err := json.Marshal(value)
+		return value, err == nil
+	case float64:
+		return value, !math.IsInf(value, 0) && !math.IsNaN(value)
+	case map[string]any:
+		if value == nil {
+			return nil, true
+		}
+		visit := jsonVisit{pointer: reflect.ValueOf(value).Pointer(), kind: reflect.Map}
+		if active[visit] {
+			return nil, false
+		}
+		active[visit] = true
+		defer delete(active, visit)
+		cloned := make(map[string]any, len(value))
+		for key, item := range value {
+			itemClone, ok := cloneJSONValue(item, active)
+			if !ok {
+				return nil, false
+			}
+			cloned[key] = itemClone
+		}
+		return cloned, true
+	case []any:
+		if value == nil {
+			return nil, true
+		}
+		visit := jsonVisit{pointer: reflect.ValueOf(value).Pointer(), kind: reflect.Slice, length: len(value)}
+		if active[visit] {
+			return nil, false
+		}
+		active[visit] = true
+		defer delete(active, visit)
+		cloned := make([]any, len(value))
+		for i, item := range value {
+			itemClone, ok := cloneJSONValue(item, active)
+			if !ok {
+				return nil, false
+			}
+			cloned[i] = itemClone
+		}
+		return cloned, true
+	default:
+		return nil, false
 	}
 }
 
@@ -73,15 +144,19 @@ func (j *jsonValues) Bytes() []byte {
 	return b
 }
 
-func (j *jsonValues) Map() map[string]interface{} {
+func (j *jsonValues) Map() map[string]any {
 	m, _ := j.sj.Map()
 	if m == nil {
-		return map[string]interface{}{}
+		return map[string]any{}
 	}
-	return cloneValue(m).(map[string]interface{})
+	result := make(map[string]any, len(m))
+	for key, value := range m {
+		result[key] = cloneValue(value)
+	}
+	return result
 }
 
-func (j *jsonValues) Scan(v interface{}) error {
+func (j *jsonValues) Scan(v any) error {
 	b, err := j.sj.MarshalJSON()
 	if err != nil {
 		return err
@@ -132,7 +207,7 @@ func (j *jsonValue) Int(def int) int {
 }
 
 func (j *jsonValue) String(def string) string {
-	return j.Json.MustString(def)
+	return j.MustString(def)
 }
 
 func (j *jsonValue) Float64(def float64) float64 {
@@ -176,11 +251,11 @@ func (j *jsonValue) StringSlice(def []string) []string {
 			return sl
 		}
 	}
-	return slices.Clone(j.Json.MustStringArray(def))
+	return slices.Clone(j.MustStringArray(def))
 }
 
 func (j *jsonValue) StringMap(def map[string]string) map[string]string {
-	m, err := j.Json.Map()
+	m, err := j.Map()
 	if err != nil {
 		return def
 	}
@@ -194,8 +269,8 @@ func (j *jsonValue) StringMap(def map[string]string) map[string]string {
 	return res
 }
 
-func (j *jsonValue) Scan(v interface{}) error {
-	b, err := j.Json.MarshalJSON()
+func (j *jsonValue) Scan(v any) error {
+	b, err := j.MarshalJSON()
 	if err != nil {
 		return err
 	}
@@ -206,7 +281,7 @@ func (j *jsonValue) Bytes() []byte {
 	b, err := j.Json.Bytes()
 	if err != nil {
 		// try return marshalled
-		b, err = j.Json.MarshalJSON()
+		b, err = j.MarshalJSON()
 		if err != nil {
 			return []byte{}
 		}
@@ -216,16 +291,16 @@ func (j *jsonValue) Bytes() []byte {
 }
 
 // cloneValue copies the JSON tree; primitive JSON values are immutable.
-func cloneValue(v interface{}) interface{} {
+func cloneValue(v any) any {
 	switch v := v.(type) {
-	case map[string]interface{}:
-		m := make(map[string]interface{}, len(v))
+	case map[string]any:
+		m := make(map[string]any, len(v))
 		for key, value := range v {
 			m[key] = cloneValue(value)
 		}
 		return m
-	case []interface{}:
-		values := make([]interface{}, len(v))
+	case []any:
+		values := make([]any, len(v))
 		for i, value := range v {
 			values[i] = cloneValue(value)
 		}

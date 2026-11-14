@@ -14,7 +14,7 @@ type Index interface {
 	Bind(ctx *gin.Context) error
 	GetPageIndex() int
 	GetPageSize() int
-	GetNeedSearch() interface{}
+	GetNeedSearch() any
 }
 
 // Control is what a create/update-request DTO implements: bind itself, and
@@ -23,5 +23,5 @@ type Control interface {
 	Generate() Control
 	Bind(ctx *gin.Context) error
 	GenerateM() (models.ActiveRecord, error)
-	GetId() interface{}
+	GetID() any
 }

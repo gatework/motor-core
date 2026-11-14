@@ -64,28 +64,6 @@ type QueueOptions struct {
 	Batch int64
 }
 
-func (o QueueOptions) withDefaults() QueueOptions {
-	if o.Group == "" {
-		o.Group = defaultGroup
-	}
-	if o.Consumer == "" {
-		o.Consumer = defaultConsumer()
-	}
-	if o.MaxAttempts <= 0 {
-		o.MaxAttempts = defaultMaxAttempts
-	}
-	if o.Block <= 0 {
-		o.Block = defaultBlock
-	}
-	if o.ClaimMinIdle <= 0 {
-		o.ClaimMinIdle = defaultClaimMinIdle
-	}
-	if o.Batch <= 0 {
-		o.Batch = defaultBatch
-	}
-	return o
-}
-
 func defaultConsumer() string {
 	host, err := os.Hostname()
 	if err != nil || host == "" {
@@ -116,22 +94,23 @@ type Queue struct {
 	handlers map[string]storage.Handler
 	// groups caches topics known to have a consumer group in Redis, whether it
 	// was created here or by another instance.
-	groups      map[string]struct{}
-	closed      bool
-	pending     map[string]struct{}
-	operations  sync.WaitGroup
-	runDone     chan struct{}
-	done        chan struct{}
-	shutdownErr error
+	groups map[string]struct{}
+	// reclaimCursor is owned by the retry loop, whose topic set is frozen.
+	reclaimCursor map[string]string
+	closed        bool
+	pending       map[string]struct{}
+	operations    sync.WaitGroup
+	runDone       chan struct{}
+	done          chan struct{}
+	shutdownErr   error
 
 	// started is guarded by mu because marking the queue started and freezing
 	// its topic set have to be one step.
 	started bool
 
-	// stopCtx is cancelled by Shutdown, so a running Run unblocks even when its
+	// stop is closed by Shutdown, so a running Run unblocks even when its
 	// own context is still live.
-	stopCtx    context.Context
-	stopCancel context.CancelFunc
+	stop chan struct{}
 }
 
 var _ storage.Queue = (*Queue)(nil)
@@ -153,30 +132,24 @@ func OpenQueue(ctx context.Context, clientOpts *goredis.Options, opts QueueOptio
 }
 
 func newQueue(client goredis.UniversalClient, owned bool, opts QueueOptions) *Queue {
-	stopCtx, stopCancel := context.WithCancel(context.Background())
 	return &Queue{
-		client:     client,
-		owned:      owned,
-		opts:       opts.withDefaults(),
-		handlers:   make(map[string]storage.Handler),
-		groups:     make(map[string]struct{}),
-		pending:    make(map[string]struct{}),
-		runDone:    make(chan struct{}),
-		done:       make(chan struct{}),
-		stopCtx:    stopCtx,
-		stopCancel: stopCancel,
+		client:        client,
+		owned:         owned,
+		opts:          opts.withDefaults(),
+		handlers:      make(map[string]storage.Handler),
+		groups:        make(map[string]struct{}),
+		reclaimCursor: make(map[string]string),
+		pending:       make(map[string]struct{}),
+		runDone:       make(chan struct{}),
+		done:          make(chan struct{}),
+		stop:          make(chan struct{}),
 	}
 }
 
 // String identifies the backend.
 func (q *Queue) String() string { return "redis" }
 
-func (q *Queue) stream(topic string) string { return q.opts.KeyPrefix + topic }
-
-func (q *Queue) topic(stream string) string {
-	return strings.TrimPrefix(stream, q.opts.KeyPrefix)
-}
-
+// Subscribe creates the consumer group and registers a handler before Run.
 func (q *Queue) Subscribe(ctx context.Context, topic string, h storage.Handler) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -229,6 +202,249 @@ func (q *Queue) Subscribe(ctx context.Context, topic string, h storage.Handler) 
 	return nil
 }
 
+// isMissingGroup reports the error Redis returns for a read against a group
+// that does not exist. It has no dedicated type in the client, so the reply is
+// matched on its prefix, which is what NOGROUP is for.
+func isMissingGroup(err error) bool {
+	return err != nil && strings.HasPrefix(err.Error(), "NOGROUP")
+}
+
+// Publish appends a message only when its topic has a known consumer group.
+func (q *Queue) Publish(ctx context.Context, msg storage.Message) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	q.mu.Lock()
+	if q.closed {
+		q.mu.Unlock()
+		return storage.ErrQueueClosed
+	}
+	_, known := q.groups[msg.Topic]
+	q.operations.Add(1)
+	q.mu.Unlock()
+	defer q.operations.Done()
+	if !known {
+		// The subscriber may live in another process, so a missing local
+		// registration is not evidence that nobody consumes the topic. The
+		// answer is cached, so this costs one round trip per topic.
+		ok, err := q.groupExists(ctx, msg.Topic)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return storage.ErrNoHandler
+		}
+		q.mu.Lock()
+		q.groups[msg.Topic] = struct{}{}
+		q.mu.Unlock()
+	}
+
+	values, err := encodeValues(msg.Values)
+	if err != nil {
+		return err
+	}
+
+	// The stream assigns the ID, which is what the consumer sees on delivery.
+	return q.client.XAdd(ctx, &goredis.XAddArgs{
+		Stream: q.stream(msg.Topic),
+		Values: values,
+	}).Err()
+}
+
+// Run consumes subscribed streams until cancellation or shutdown.
+func (q *Queue) Run(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	topics, err := q.begin()
+	if err != nil {
+		return err
+	}
+
+	defer q.startShutdown()
+	defer close(q.runDone)
+
+	// Registered first so that it runs last: the cancel below has to happen
+	// before this Wait, otherwise returning on a read error would block here
+	// with reclaimLoop still watching a live context.
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
+	// Shutdown has to unblock the read as well, so both signals feed one context.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	wg.Go(func() {
+		select {
+		case <-q.stop:
+			cancel()
+		case <-ctx.Done():
+		}
+	})
+
+	if len(topics) == 0 {
+		// XREADGROUP needs at least one stream, so there is nothing to do but
+		// wait for the caller to give up. Said out loud, because a queue that
+		// consumes nothing is almost always a wiring mistake — Subscribe has to
+		// happen before Run, and a caller that starts first gets silence.
+		slog.WarnContext(ctx, "queue: started with no subscriptions, nothing will be consumed",
+			"group", q.opts.Group)
+		<-ctx.Done()
+		return nil
+	}
+
+	wg.Go(func() {
+		q.reclaimLoop(ctx, topics)
+	})
+
+	// XREADGROUP takes every key first and every start ID second. One read
+	// covers every topic, so an idle queue costs one round trip per Block
+	// rather than one per topic.
+	args := make([]string, 0, len(topics)*2)
+	for _, t := range topics {
+		args = append(args, q.stream(t))
+	}
+	for range topics {
+		args = append(args, ">")
+	}
+
+	for {
+		if ctx.Err() != nil {
+			return nil
+		}
+		res, err := q.client.XReadGroup(ctx, &goredis.XReadGroupArgs{
+			Group:    q.opts.Group,
+			Consumer: q.opts.Consumer,
+			Streams:  args,
+			Count:    q.opts.Batch,
+			Block:    q.opts.Block,
+		}).Result()
+		switch {
+		case errors.Is(err, goredis.Nil):
+			// The block elapsed with nothing new.
+			continue
+		case isMissingGroup(err):
+			if !q.recoverGroups(ctx, topics) {
+				return nil
+			}
+			continue
+		case err != nil:
+			if ctx.Err() != nil {
+				// Cancellation, whether from the caller or from Shutdown, is a
+				// clean exit rather than a failure.
+				return nil
+			}
+			return err
+		}
+
+		for _, s := range res {
+			topic := q.topic(s.Stream)
+			for _, m := range s.Messages {
+				// A message read with ">" has been delivered exactly once.
+				q.deliver(ctx, topic, m, 1)
+			}
+		}
+	}
+}
+
+// Shutdown stops accepting messages and cancels the read and retry loops.
+// The owned client closes only after Run and admitted operations have finished.
+// Unacknowledged deliveries remain pending for another consumer.
+func (q *Queue) Shutdown(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	q.startShutdown()
+	select {
+	case <-q.done:
+		q.mu.RLock()
+		defer q.mu.RUnlock()
+		return q.shutdownErr
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// emptyField stands in for a message with no values. XADD rejects an entry
+// that carries no field at all, and a message whose payload is empty is still
+// a message worth delivering.
+//
+// Its value is the empty string, which json.Marshal cannot produce, so a
+// caller's own field of the same name is never mistaken for the marker.
+const emptyField = "go-admin:empty"
+
+// encodeValues renders each value as JSON, because a stream field is a string.
+func encodeValues(in map[string]any) (map[string]any, error) {
+	if len(in) == 0 {
+		return map[string]any{emptyField: ""}, nil
+	}
+
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		b, err := json.Marshal(v)
+		if err != nil {
+			return nil, fmt.Errorf("storage: encode value %q: %w", k, err)
+		}
+		out[k] = string(b)
+	}
+	return out, nil
+}
+
+func decodeValues(in map[string]any) map[string]any {
+	if len(in) == 1 {
+		if v, ok := in[emptyField]; ok && v == "" {
+			return map[string]any{}
+		}
+	}
+
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		s, ok := v.(string)
+		if !ok {
+			out[k] = v
+			continue
+		}
+
+		var decoded any
+		if err := json.Unmarshal([]byte(s), &decoded); err != nil {
+			// Written by something other than this package; pass it through as
+			// the string Redis returned.
+			out[k] = s
+			continue
+		}
+		out[k] = decoded
+	}
+	return out
+}
+
+func (o QueueOptions) withDefaults() QueueOptions {
+	if o.Group == "" {
+		o.Group = defaultGroup
+	}
+	if o.Consumer == "" {
+		o.Consumer = defaultConsumer()
+	}
+	if o.MaxAttempts <= 0 {
+		o.MaxAttempts = defaultMaxAttempts
+	}
+	if o.Block <= 0 {
+		o.Block = defaultBlock
+	}
+	if o.ClaimMinIdle <= 0 {
+		o.ClaimMinIdle = defaultClaimMinIdle
+	}
+	if o.Batch <= 0 {
+		o.Batch = defaultBatch
+	}
+	return o
+}
+
+func (q *Queue) stream(topic string) string { return q.opts.KeyPrefix + topic }
+
+func (q *Queue) topic(stream string) string {
+	return strings.TrimPrefix(stream, q.opts.KeyPrefix)
+}
+
 // begin marks the queue started and returns the topics it will serve. The two
 // happen under one lock, so a Subscribe cannot slip between them and register
 // a topic the read loop will never look at.
@@ -262,13 +478,6 @@ func (q *Queue) ensureGroup(ctx context.Context, topic string) error {
 	return nil
 }
 
-// isMissingGroup reports the error Redis returns for a read against a group
-// that does not exist. It has no dedicated type in the client, so the reply is
-// matched on its prefix, which is what NOGROUP is for.
-func isMissingGroup(err error) bool {
-	return err != nil && strings.HasPrefix(err.Error(), "NOGROUP")
-}
-
 // groupExists asks Redis whether anyone consumes the topic.
 func (q *Queue) groupExists(ctx context.Context, topic string) (bool, error) {
 	groups, err := q.client.XInfoGroups(ctx, q.stream(topic)).Result()
@@ -286,165 +495,6 @@ func (q *Queue) groupExists(ctx context.Context, topic string) (bool, error) {
 		}
 	}
 	return false, nil
-}
-
-func (q *Queue) Publish(ctx context.Context, msg storage.Message) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
-	q.mu.RLock()
-	closed := q.closed
-	_, known := q.groups[msg.Topic]
-	q.mu.RUnlock()
-
-	if closed {
-		return storage.ErrQueueClosed
-	}
-	if !known {
-		// The subscriber may live in another process, so a missing local
-		// registration is not evidence that nobody consumes the topic. The
-		// answer is cached, so this costs one round trip per topic.
-		ok, err := q.groupExists(ctx, msg.Topic)
-		if err != nil {
-			return err
-		}
-		if !ok {
-			return storage.ErrNoHandler
-		}
-		q.mu.Lock()
-		q.groups[msg.Topic] = struct{}{}
-		q.mu.Unlock()
-	}
-
-	values, err := encodeValues(msg.Values)
-	if err != nil {
-		return err
-	}
-
-	// The stream assigns the ID, which is what the consumer sees on delivery.
-	return q.client.XAdd(ctx, &goredis.XAddArgs{
-		Stream: q.stream(msg.Topic),
-		Values: values,
-	}).Err()
-}
-
-func (q *Queue) Run(ctx context.Context) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	topics, err := q.begin()
-	if err != nil {
-		return err
-	}
-
-	defer q.startShutdown()
-	defer close(q.runDone)
-
-	// Registered first so that it runs last: the cancel below has to happen
-	// before this Wait, otherwise returning on a read error would block here
-	// with reclaimLoop still watching a live context.
-	var wg sync.WaitGroup
-	defer wg.Wait()
-
-	// Shutdown has to unblock the read as well, so both signals feed one context.
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	defer context.AfterFunc(q.stopCtx, cancel)()
-
-	if len(topics) == 0 {
-		// XREADGROUP needs at least one stream, so there is nothing to do but
-		// wait for the caller to give up. Said out loud, because a queue that
-		// consumes nothing is almost always a wiring mistake — Subscribe has to
-		// happen before Run, and a caller that starts first gets silence.
-		slog.Warn("queue: started with no subscriptions, nothing will be consumed",
-			"group", q.opts.Group)
-		<-ctx.Done()
-		return nil
-	}
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		q.reclaimLoop(ctx, topics)
-	}()
-
-	// XREADGROUP takes every key first and every start ID second. One read
-	// covers every topic, so an idle queue costs one round trip per Block
-	// rather than one per topic.
-	args := make([]string, 0, len(topics)*2)
-	for _, t := range topics {
-		args = append(args, q.stream(t))
-	}
-	for range topics {
-		args = append(args, ">")
-	}
-
-	for {
-		if ctx.Err() != nil {
-			return nil
-		}
-		res, err := q.client.XReadGroup(ctx, &goredis.XReadGroupArgs{
-			Group:    q.opts.Group,
-			Consumer: q.opts.Consumer,
-			Streams:  args,
-			Count:    q.opts.Batch,
-			Block:    q.opts.Block,
-		}).Result()
-		switch {
-		case errors.Is(err, goredis.Nil):
-			// The block elapsed with nothing new.
-			continue
-		case isMissingGroup(err):
-			if ctx.Err() != nil {
-				// Cancellation outranks recovery. A real client reports the
-				// cancellation itself, but this branch loops, and a looping
-				// branch that cannot be stopped is a hang waiting to happen.
-				return nil
-			}
-			// The group can be gone for two reasons: a Subscribe that has not
-			// finished creating it yet, or an operator deleting the stream
-			// while this is running. Neither is a reason to stop consuming
-			// forever, which is what returning here used to do.
-			recreated := true
-			for _, t := range topics {
-				if err := q.ensureGroup(ctx, t); err != nil {
-					recreated = false
-					if ctx.Err() == nil {
-						slog.Warn("queue: could not recreate the consumer group",
-							"topic", t, "error", err)
-					}
-				}
-			}
-			if !recreated {
-				// A missing group comes back immediately and ignores Block, so
-				// a group that cannot be recreated — a read-only replica, an
-				// ACL without XGROUP — would spin this loop at full speed and
-				// fill the log. Wait out one read instead.
-				select {
-				case <-ctx.Done():
-					return nil
-				case <-time.After(q.opts.Block):
-				}
-			}
-			continue
-		case err != nil:
-			if ctx.Err() != nil {
-				// Cancellation, whether from the caller or from Shutdown, is a
-				// clean exit rather than a failure.
-				return nil
-			}
-			return err
-		}
-
-		for _, s := range res {
-			topic := q.topic(s.Stream)
-			for _, m := range s.Messages {
-				// A message read with ">" has been delivered exactly once.
-				q.deliver(ctx, topic, m, 1)
-			}
-		}
-	}
 }
 
 // reclaimLoop retries deliveries that were never acknowledged, which is how a
@@ -467,18 +517,29 @@ func (q *Queue) reclaimLoop(ctx context.Context, topics []string) {
 
 func (q *Queue) reclaim(ctx context.Context, topic string) {
 	stream := q.stream(topic)
+	start := q.reclaimCursor[topic]
+	if start == "" {
+		start = "-"
+	}
 
 	pending, err := q.client.XPendingExt(ctx, &goredis.XPendingExtArgs{
 		Stream: stream,
 		Group:  q.opts.Group,
 		Idle:   q.opts.ClaimMinIdle,
-		Start:  "-",
+		Start:  start,
 		End:    "+",
 		Count:  q.opts.Batch,
 	}).Result()
 	if err != nil {
-		// Transient; the next sweep tries again.
+		// Transient; the next sweep tries again from the same cursor.
 		return
+	}
+	// Exhausted deliveries stay visible in Redis, so advance past them as well.
+	// A short page ends this pass; the next sweep starts at the oldest entry.
+	if int64(len(pending)) == q.opts.Batch {
+		q.reclaimCursor[topic] = "(" + pending[len(pending)-1].ID
+	} else {
+		delete(q.reclaimCursor, topic)
 	}
 
 	ids := make([]string, 0, len(pending))
@@ -560,7 +621,7 @@ func (q *Queue) startShutdown() {
 	}
 	q.closed = true
 	started := q.started
-	q.stopCancel()
+	close(q.stop)
 	go func() {
 		q.operations.Wait()
 		if started {
@@ -577,72 +638,29 @@ func (q *Queue) startShutdown() {
 	}()
 }
 
-// Shutdown stops accepting messages and cancels the read and retry loops.
-// The owned client closes only after Run and admitted operations have finished.
-// Unacknowledged deliveries remain pending for another consumer.
-func (q *Queue) Shutdown(ctx context.Context) error {
-	if err := ctx.Err(); err != nil {
-		return err
+// recoverGroups paces a missing-group response, which otherwise bypasses Block.
+func (q *Queue) recoverGroups(ctx context.Context, topics []string) bool {
+	if ctx.Err() != nil {
+		return false
 	}
-	q.startShutdown()
+	recreated := true
+	for _, topic := range topics {
+		if err := q.ensureGroup(ctx, topic); err != nil {
+			recreated = false
+			if ctx.Err() == nil {
+				slog.WarnContext(ctx, "queue: could not recreate the consumer group", "topic", topic, "error", err)
+			}
+		}
+	}
+	if recreated {
+		return true
+	}
+	timer := time.NewTimer(q.opts.Block)
+	defer timer.Stop()
 	select {
-	case <-q.done:
-		q.mu.RLock()
-		defer q.mu.RUnlock()
-		return q.shutdownErr
 	case <-ctx.Done():
-		return ctx.Err()
+		return false
+	case <-timer.C:
+		return true
 	}
-}
-
-// emptyField stands in for a message with no values. XADD rejects an entry
-// that carries no field at all, and a message whose payload is empty is still
-// a message worth delivering.
-//
-// Its value is the empty string, which json.Marshal cannot produce, so a
-// caller's own field of the same name is never mistaken for the marker.
-const emptyField = "go-admin:empty"
-
-// encodeValues renders each value as JSON, because a stream field is a string.
-func encodeValues(in map[string]interface{}) (map[string]interface{}, error) {
-	if len(in) == 0 {
-		return map[string]interface{}{emptyField: ""}, nil
-	}
-
-	out := make(map[string]interface{}, len(in))
-	for k, v := range in {
-		b, err := json.Marshal(v)
-		if err != nil {
-			return nil, fmt.Errorf("storage: encode value %q: %w", k, err)
-		}
-		out[k] = string(b)
-	}
-	return out, nil
-}
-
-func decodeValues(in map[string]interface{}) map[string]interface{} {
-	if len(in) == 1 {
-		if v, ok := in[emptyField]; ok && v == "" {
-			return map[string]interface{}{}
-		}
-	}
-
-	out := make(map[string]interface{}, len(in))
-	for k, v := range in {
-		s, ok := v.(string)
-		if !ok {
-			out[k] = v
-			continue
-		}
-
-		var decoded interface{}
-		if err := json.Unmarshal([]byte(s), &decoded); err != nil {
-			// Written by something other than this package; pass it through as
-			// the string Redis returned.
-			out[k] = s
-			continue
-		}
-		out[k] = decoded
-	}
-	return out
 }

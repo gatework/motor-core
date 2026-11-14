@@ -1,26 +1,27 @@
-// package loader manages loading from multiple sources
+// Package loader defines configuration snapshots and source loading contracts.
 package loader
 
 import (
 	"bytes"
-	"context"
 
 	"github.com/gatework/motor-core/config/reader"
 	"github.com/gatework/motor-core/config/source"
 )
 
 // Loader manages loading sources
+//
+//nolint:iface // Loader is a public port shared by manager and backend packages.
 type Loader interface {
 	// Close Stop the loader
 	Close() error
 	// Load the sources
-	Load(...source.Source) error
+	Load(sources ...source.Source) error
 	// Snapshot A Snapshot of loaded config
 	Snapshot() (*Snapshot, error)
 	// Sync Force sync of sources
 	Sync() error
 	// Watch for changes
-	Watch(...string) (Watcher, error)
+	Watch(path ...string) (Watcher, error)
 	// String Name of loader
 	String() string
 }
@@ -43,14 +44,13 @@ type Snapshot struct {
 	Version string
 }
 
+// Options supplies a loader with its reader and initial sources.
 type Options struct {
 	Reader reader.Reader
 	Source []source.Source
-
-	// for alternative data
-	Context context.Context
 }
 
+// Option changes loader construction settings.
 type Option func(o *Options)
 
 // Copy snapshot

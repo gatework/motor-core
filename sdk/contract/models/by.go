@@ -27,7 +27,7 @@ func (e *ControlBy) SetUpdateBy(updateBy int) {
 
 // Model is the primary key embed shared by every framework-managed table.
 type Model struct {
-	Id int `json:"id" gorm:"primaryKey;autoIncrement;comment:primary key"`
+	ID int `json:"id" gorm:"primaryKey;autoIncrement;comment:primary key"`
 }
 
 // ModelTime holds the created/updated/deleted timestamps every framework

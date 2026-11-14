@@ -1,3 +1,4 @@
+// Package config validates and publishes application settings snapshots.
 package config
 
 import (
@@ -5,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"log/slog"
 	"slices"
 	"sort"
@@ -16,7 +16,6 @@ import (
 	"github.com/gatework/motor-core/config/loader/memory"
 	jsonreader "github.com/gatework/motor-core/config/reader/json"
 	"github.com/gatework/motor-core/config/source"
-	"github.com/gatework/motor-core/logger"
 )
 
 // Settings is a complete settings-file snapshot.
@@ -45,7 +44,7 @@ type publishedSettings struct {
 
 var current atomic.Pointer[publishedSettings]
 
-// Current returns a copy of the last successfully loaded settings. The caller
+// Current returns a cloned of the last successfully loaded settings. The caller
 // owns the result, including maps, slices, and optional configuration sections.
 func Current() *Settings {
 	snapshot := current.Load()
@@ -56,34 +55,34 @@ func Current() *Settings {
 }
 
 func cloneSettings(settings *Settings) *Settings {
-	copy := *settings
-	copy.Settings.Database = cloneDatabase(settings.Settings.Database)
-	copy.Settings.Databases = make(map[string]Database, len(settings.Settings.Databases))
+	cloned := *settings
+	cloned.Settings.Database = cloneDatabase(settings.Settings.Database)
+	cloned.Settings.Databases = make(map[string]Database, len(settings.Settings.Databases))
 	for name, db := range settings.Settings.Databases {
-		copy.Settings.Databases[name] = cloneDatabase(db)
+		cloned.Settings.Databases[name] = cloneDatabase(db)
 	}
-	copy.Settings.Extend = make(map[string]json.RawMessage, len(settings.Settings.Extend))
+	cloned.Settings.Extend = make(map[string]json.RawMessage, len(settings.Settings.Extend))
 	for name, data := range settings.Settings.Extend {
-		copy.Settings.Extend[name] = bytes.Clone(data)
+		cloned.Settings.Extend[name] = bytes.Clone(data)
 	}
 	if rotation := settings.Settings.Logger.Rotation; rotation != nil {
 		value := *rotation
-		copy.Settings.Logger.Rotation = &value
+		cloned.Settings.Logger.Rotation = &value
 	}
-	copy.Settings.Cache.Redis = cloneRedis(settings.Settings.Cache.Redis)
+	cloned.Settings.Cache.Redis = cloneRedis(settings.Settings.Cache.Redis)
 	if settings.Settings.Cache.Memory != nil {
-		copy.Settings.Cache.Memory = &CacheMemory{}
+		cloned.Settings.Cache.Memory = &CacheMemory{}
 	}
 	if redis := settings.Settings.Queue.Redis; redis != nil {
 		value := *redis
 		value.RedisOptions = *cloneRedis(&redis.RedisOptions)
-		copy.Settings.Queue.Redis = &value
+		cloned.Settings.Queue.Redis = &value
 	}
 	if memory := settings.Settings.Queue.Memory; memory != nil {
 		value := *memory
-		copy.Settings.Queue.Memory = &value
+		cloned.Settings.Queue.Memory = &value
 	}
-	return &copy
+	return &cloned
 }
 
 func cloneDatabase(db Database) Database {
@@ -100,50 +99,12 @@ func cloneRedis(redis *RedisOptions) *RedisOptions {
 	if redis == nil {
 		return nil
 	}
-	copy := *redis
+	cloned := *redis
 	if redis.TLS != nil {
 		tls := *redis.TLS
-		copy.TLS = &tls
+		cloned.TLS = &tls
 	}
-	return &copy
-}
-
-func (c *Config) multiDatabase() {
-	if len(c.Databases) == 0 {
-		c.Databases = map[string]Database{"*": c.Database}
-		return
-	}
-	if _, wildcard := c.Databases["*"]; wildcard && len(c.Databases) > 1 {
-		others := make([]string, 0, len(c.Databases)-1)
-		for name := range c.Databases {
-			if name != "*" {
-				others = append(others, name)
-			}
-		}
-		sort.Strings(others)
-		slog.Warn("config: wildcard database hides per-tenant entries", "ignored", others)
-	}
-}
-
-func (s *Settings) validate() error {
-	app := s.Settings.Application
-	if app.Port < 0 || app.Port > 65535 {
-		return errors.New("config: application port must be between 0 and 65535")
-	}
-	if app.ReadTimeout < 0 || app.WriterTimeout < 0 {
-		return errors.New("config: application timeouts cannot be negative")
-	}
-	if s.Settings.JWT.Timeout < 0 || s.Settings.JWT.MaxRefresh < 0 {
-		return errors.New("config: jwt durations cannot be negative")
-	}
-	for _, redis := range []*RedisOptions{s.Settings.Cache.Redis, queueRedis(s.Settings.Queue.Redis)} {
-		if redis != nil {
-			if _, err := redis.Options(); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	return &cloned
 }
 
 func queueRedis(q *RedisQueue) *RedisOptions {
@@ -164,7 +125,6 @@ type Watcher struct {
 	closeErr  error
 	callbacks []func(*Settings) error
 	onApplied func(*Settings)
-	log       logger.Logger
 }
 
 // Options defines preparation callbacks and the notification after publication.
@@ -178,7 +138,8 @@ type Options struct {
 // Setup validates and publishes the initial settings, then starts watching.
 // Callbacks receive candidate snapshots before publication; a rejected candidate
 // leaves Current and registered extension values unchanged. Callbacks must clean
-// up resources they created if they return an error.
+// up resources they created if they return an error. Setup never creates or
+// publishes application resources, including the process logger.
 func Setup(ctx context.Context, s source.Source, options Options) (*Watcher, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -212,13 +173,81 @@ func Setup(ctx context.Context, s source.Source, options Options) (*Watcher, err
 	return w, nil
 }
 
+// Close stops source watchers and waits for the active reload callback.
+func (w *Watcher) Close() error {
+	w.once.Do(func() {
+		w.cancel()
+		_ = w.watch.Stop()
+		w.closeErr = w.loader.Close()
+	})
+	<-w.done
+	return w.closeErr
+}
+
+func (c *Config) multiDatabase() {
+	if len(c.Databases) == 0 {
+		c.Databases = map[string]Database{"*": c.Database}
+		return
+	}
+	if _, wildcard := c.Databases["*"]; wildcard && len(c.Databases) > 1 {
+		others := make([]string, 0, len(c.Databases)-1)
+		for name := range c.Databases {
+			if name != "*" {
+				others = append(others, name)
+			}
+		}
+		sort.Strings(others)
+		slog.Warn("config: wildcard database hides per-tenant entries", "ignored", others)
+	}
+}
+
+func (s *Settings) validate() error {
+	app := s.Settings.Application
+	if app.Port < 0 || app.Port > 65535 {
+		return errors.New("config: application port must be between 0 and 65535")
+	}
+	if app.ReadTimeout < 0 || app.WriterTimeout < 0 {
+		return errors.New("config: application timeouts cannot be negative")
+	}
+	if s.Settings.JWT.Timeout < 0 || s.Settings.JWT.MaxRefresh < 0 {
+		return errors.New("config: jwt durations cannot be negative")
+	}
+	if err := s.Settings.Logger.validate(); err != nil {
+		return err
+	}
+	for _, redis := range []*RedisOptions{s.Settings.Cache.Redis, queueRedis(s.Settings.Queue.Redis)} {
+		if redis != nil {
+			if _, err := redis.Options(); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (w *Watcher) apply(ctx context.Context, snapshot *loader.Snapshot) error {
 	values, err := jsonreader.NewReader().Values(snapshot.ChangeSet)
 	if err != nil {
 		return err
 	}
+	var envelope struct {
+		Settings json.RawMessage `json:"settings"`
+	}
+	if err := values.Scan(&envelope); err != nil {
+		return err
+	}
+	if len(envelope.Settings) == 0 {
+		return errors.New("config: settings object is required")
+	}
+	var sections map[string]json.RawMessage
+	if err := json.Unmarshal(envelope.Settings, &sections); err != nil {
+		return err
+	}
+	if len(sections) == 0 {
+		return errors.New("config: settings object must not be empty or null")
+	}
 	next := &Settings{}
-	if err := values.Scan(next); err != nil {
+	if err := json.Unmarshal(envelope.Settings, &next.Settings); err != nil {
 		return err
 	}
 	if err := next.validate(); err != nil {
@@ -229,34 +258,18 @@ func (w *Watcher) apply(ctx context.Context, snapshot *loader.Snapshot) error {
 	if err != nil {
 		return err
 	}
-	log, err := next.Settings.Logger.Open()
-	if err != nil {
-		return err
-	}
 	for _, callback := range w.callbacks {
 		if callback == nil {
 			continue
 		}
 		if err := callback(cloneSettings(next)); err != nil {
-			if closer, ok := log.(io.Closer); ok {
-				_ = closer.Close()
-			}
 			return err
 		}
 	}
 	if err := ctx.Err(); err != nil {
-		if closer, ok := log.(io.Closer); ok {
-			_ = closer.Close()
-		}
 		return err
 	}
 	current.Store(&publishedSettings{settings: next, extensions: extensions})
-	previous := w.log
-	w.log = log
-	logger.SetDefault(log)
-	if closer, ok := previous.(io.Closer); ok {
-		_ = closer.Close()
-	}
 	if w.onApplied != nil {
 		w.onApplied(cloneSettings(next))
 	}
@@ -266,11 +279,6 @@ func (w *Watcher) apply(ctx context.Context, snapshot *loader.Snapshot) error {
 func (w *Watcher) run(ctx context.Context) {
 	defer close(w.done)
 	defer w.loader.Close()
-	defer func() {
-		if closer, ok := w.log.(io.Closer); ok {
-			_ = closer.Close()
-		}
-	}()
 	stop := context.AfterFunc(ctx, func() { _ = w.watch.Stop() })
 	defer stop()
 	for {
@@ -279,17 +287,7 @@ func (w *Watcher) run(ctx context.Context) {
 			return
 		}
 		if err := w.apply(ctx, snapshot); err != nil && ctx.Err() == nil {
-			slog.Error("config: rejected reload", "error", err)
+			slog.ErrorContext(ctx, "config: rejected reload", "error", err)
 		}
 	}
-}
-
-func (w *Watcher) Close() error {
-	w.once.Do(func() {
-		w.cancel()
-		_ = w.watch.Stop()
-		w.closeErr = w.loader.Close()
-	})
-	<-w.done
-	return w.closeErr
 }

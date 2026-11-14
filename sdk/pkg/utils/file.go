@@ -9,7 +9,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/shamsher31/goimgext"
+	imgext "github.com/shamsher31/goimgext"
 )
 
 // GetSize 获取文件大小
@@ -55,7 +55,7 @@ func IsNotExistMkDir(src string) error {
 
 // MkDir 新建文件夹
 func MkDir(src string) error {
-	err := os.MkdirAll(src, os.ModePerm)
+	err := os.MkdirAll(src, 0o750)
 	if err != nil {
 		return err
 	}
@@ -97,7 +97,7 @@ func GetImgType(p string) (string, error) {
 
 	ext := imgext.Get()
 
-	for i := 0; i < len(ext); i++ {
+	for i := range ext {
 		if strings.Contains(ext[i], filetype[6:]) {
 			return filetype, nil
 		}

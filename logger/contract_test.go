@@ -35,8 +35,7 @@ func TestLoggerPipelineFields(t *testing.T) {
 			if _, ok := child.(io.Closer); ok {
 				t.Fatal("a field view owns Close")
 			}
-			//lint:ignore SA1029 Exercise the string keys accepted by contextFields.
-			ctx := context.WithValue(context.Background(), "request_id", "request-secret")
+			ctx := requestMetadataContext{Context: t.Context()}
 			child.Log(ctx, InfoLevel, "entry", FieldString("phone", "13812345678"))
 			NewHelper(child).Info(42)
 			NewHelper(child).Infof("id=%d", 7)
@@ -171,4 +170,15 @@ func TestAsyncDropCallbackMayClose(t *testing.T) {
 	if !closed.Load() {
 		t.Fatal("drop callback did not close the logger")
 	}
+}
+
+// requestMetadataContext models external middleware that exposes the supported
+// request_id metadata key without introducing a string-keyed context.WithValue.
+type requestMetadataContext struct{ context.Context }
+
+func (c requestMetadataContext) Value(key any) any {
+	if key == "request_id" {
+		return "request-secret"
+	}
+	return c.Context.Value(key)
 }

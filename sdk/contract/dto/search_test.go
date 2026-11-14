@@ -11,27 +11,27 @@ import (
 	"github.com/gatework/motor-core/tools/search"
 )
 
-// GetIds used to append Id a second time inside an else branch: passing only
-// Id returned [5 5], and a delete request deleted the same row twice.
-func TestGeneralDelDtoGetIds(t *testing.T) {
+// GetIDs used to append ID a second time inside an else branch: passing only
+// ID returned [5 5], and a delete request deleted the same row twice.
+func TestGeneralDelDtoGetIDs(t *testing.T) {
 	cases := []struct {
 		name string
 		dto  GeneralDelDto
 		want []int
 	}{
-		{"id only", GeneralDelDto{Id: 5}, []int{5}},
-		{"ids only", GeneralDelDto{Ids: []int{1, 2}}, []int{1, 2}},
-		{"id and ids both set", GeneralDelDto{Id: 5, Ids: []int{1, 2}}, []int{5, 1, 2}},
-		{"non-positive ids filtered out", GeneralDelDto{Ids: []int{0, -1, 3}}, []int{3}},
-		{"zero id treated as unset", GeneralDelDto{Id: 0, Ids: []int{7}}, []int{7}},
+		{"id only", GeneralDelDto{ID: 5}, []int{5}},
+		{"ids only", GeneralDelDto{IDs: []int{1, 2}}, []int{1, 2}},
+		{"id and ids both set", GeneralDelDto{ID: 5, IDs: []int{1, 2}}, []int{5, 1, 2}},
+		{"non-positive ids filtered out", GeneralDelDto{IDs: []int{0, -1, 3}}, []int{3}},
+		{"zero id treated as unset", GeneralDelDto{ID: 0, IDs: []int{7}}, []int{7}},
 		{"nothing set falls back to 0 (delete-all convention)", GeneralDelDto{}, []int{0}},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := c.dto.GetIds()
+			got := c.dto.GetIDs()
 			if !reflect.DeepEqual(got, c.want) {
-				t.Errorf("GetIds() = %v, want %v", got, c.want)
+				t.Errorf("GetIDs() = %v, want %v", got, c.want)
 			}
 		})
 	}
@@ -68,7 +68,7 @@ type icontainsProbe struct {
 	Name string `search:"type:icontains;column:name;table:probe"`
 }
 
-func statementSQL(t *testing.T, db *gorm.DB, q interface{}) string {
+func statementSQL(t *testing.T, db *gorm.DB, q any) string {
 	t.Helper()
 	tx := db.Session(&gorm.Session{DryRun: true}).Table("probe").Scopes(MakeCondition(q)).Find(&[]searchProbe{})
 	if tx.Error != nil {

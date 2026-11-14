@@ -5,7 +5,7 @@ See [migration from go-admin-core](docs/migration/motor-core.md).
 
 Forked from [go-admin-team/go-admin-core](https://github.com/go-admin-team/go-admin-core).
 
-[![Go Version](https://img.shields.io/badge/Go-1.27.1+-00ADD8?style=flat&logo=go)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/Go-1.27.4+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja-JP.md)
@@ -14,8 +14,6 @@ Forked from [go-admin-team/go-admin-core](https://github.com/go-admin-team/go-ad
 
 ### 📝 Logger 模組（企業級日誌解決方案）
 
-- **非同步日誌** - 45x 效能提升（3,358ns → 75ns），支援 100k+ QPS
-- **取樣日誌** - 29x 效能提升（3,357ns → 116ns），智慧頻率控制
 - **遮罩日誌** - 自動遮罩敏感資料（手機號碼、密碼、電子郵件等），滿足法遵要求
 - **Logrus 轉接器** - 完整支援 Logrus 生態，可用 Hooks 超過 50 種
 - **正式環境設定** - 內建最佳實務設定（非同步 + 取樣 + 遮罩）
@@ -47,119 +45,58 @@ Forked from [go-admin-team/go-admin-core](https://github.com/go-admin-team/go-ad
 go get -u github.com/gatework/motor-core
 ```
 
-**系統需求:** Go 1.27.1 或更高版本（以 `go.mod` 中的 `go` 指令為準）
+**系統需求:** Go 1.27.4 或更高版本（以 `go.mod` 中的 `go` 指令為準）
 
 ### 基礎日誌用法
 
 ```go
 package main
 
-import "github.com/gatework/motor-core/logger"
+import (
+    "context"
+    "log"
 
-func main() {
-    // 建立 Logrus 日誌實例
-    log := logger.NewLogrusLogger(
-        logger.WithPath("logs/app.log"),
-        logger.WithLevel(logger.InfoLevel),
-    )
-
-    log.Log(logger.InfoLevel, "Application started")
-    log.Fields(map[string]interface{}{
-        "user_id": 12345,
-        "action":  "login",
-    }).Log(logger.InfoLevel, "User action")
-}
-```
-
-### 高效能非同步日誌
-
-```go
-// 建立非同步日誌（建議用於高並行情境）
-baseLog := logger.NewLogrusLogger(
-    logger.WithPath("logs/app.log"),
-    logger.WithLevel(logger.InfoLevel),
+    "github.com/gatework/motor-core/logger"
 )
 
-asyncLog := logger.NewAsyncLogger(baseLog, logger.DefaultAsyncConfig)
-defer asyncLog.(interface{ Close() error }).Close()
-
-// 45x 效能提升，延遲僅 75ns
-asyncLog.Log(logger.InfoLevel, "High performance logging")
-```
-
-### 取樣日誌（頻率控制）
-
-```go
-// 建立取樣日誌（自動過濾高頻重複日誌）
-samplingLog := logger.NewSamplingLogger(baseLog, logger.DefaultSamplingConfig)
-
-// 每秒僅記錄前 100 筆，其後每 100 筆記錄 1 筆
-for i := 0; i < 10000; i++ {
-    samplingLog.Log(logger.InfoLevel, "High frequency log")
-}
-```
-
-### 遮罩日誌（資料安全）
-
-```go
-// 建立遮罩日誌（自動處理敏感資料）
-sanitizerLog := logger.NewSanitizerLogger(baseLog, logger.DefaultSanitizerConfig)
-
-sanitizerLog.Fields(map[string]interface{}{
-    "phone":    "13812345678",  // 自動遮罩 → "138****5678"
-    "password": "secret123",    // 自動遮罩 → "[REDACTED]"
-    "email":    "user@example.com", // 自動遮罩 → "u***@example.com"
-}).Log(logger.InfoLevel, "User login")
-```
-
-### 正式環境設定（建議）
-
-```go
-// 組合使用：遮罩 → 取樣 → 非同步
-sanitized := logger.NewSanitizerLogger(baseLog, logger.DefaultSanitizerConfig)
-sampled := logger.NewSamplingLogger(sanitized, logger.DefaultSamplingConfig)
-asyncLog := logger.NewAsyncLogger(sampled, logger.DefaultAsyncConfig)
-defer asyncLog.(interface{ Close() error }).Close()
-
-// 34x 效能提升 + 資料安全 + 頻率控制
-asyncLog.Fields(map[string]interface{}{
-    "phone":   "13812345678",
-    "user_id": 12345,
-}).Log(logger.InfoLevel, "Production logging")
-```
-
----
-
-## 📦 設定管理
-
-### 讀取設定檔
-
-```go
-package main
-
-import "github.com/gatework/motor-core/config"
-
 func main() {
-    source := config.FileSource("config.json")
-    config.Setup(source, func() {
-        // 設定變更回呼
-    })
+    root, err := logger.NewLogrusLogger(
+        logger.WithPath("logs/app.log"),
+        logger.WithLevel(logger.InfoLevel),
+        logger.WithEncoder("json"),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer root.Close()
+    root.With(logger.UserID(12345)).Log(context.Background(), logger.InfoLevel, "started")
 }
 ```
 
----
+See [structured logging](logger/README_ADVANCED.md) for sampling, redaction,
+async delivery, and resource ownership. Keep the concrete root for Close/Sync;
+field views borrow it. Configuration watchers publish settings only: hosts
+explicitly create, inject, and retire application resources.
 
-## 📊 效能指標
+## Configuration
 
-| 功能 | 效能提升 | 延遲 | 記憶體用量 | 適用情境 |
-|------|---------|------|---------|---------|
-| 非同步日誌 | 45x | 75ns | 120 B/op | 高並行寫入 |
-| 取樣日誌 | 29x | 116ns | 16 B/op | 高頻重複日誌 |
-| 正式環境設定 | 34x | 98ns | 149 B/op | 正式環境建議 |
+```go
+manager, err := config.New(config.WithSource(file.NewSource(file.WithPath("config.json"))))
+if err != nil {
+    return err
+}
+defer manager.Close()
+```
 
-**測試環境:** Apple M1 Pro | Go 1.27.1.1 | 通過 Race Detector 驗證
+The example uses `config` and `config/source/file` from this module. See
+[configuration](config/README.md) and [migration](docs/migration/motor-core.md).
 
----
+## Performance measurement
+
+Run `make bench` for a smoke check. Use `BenchmarkDelivery` to compare async
+admission and actual sink delivery: it reports written/s and dropped/op and
+includes draining accepted entries. Sampling and dropping are not throughput
+gains. Compare on the same machine and toolchain, including p99 under mixed load.
 
 ## 🧪 測試
 

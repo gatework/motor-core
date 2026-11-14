@@ -29,7 +29,7 @@ func resetSeeder(t *testing.T) {
 }
 
 // fakeSeeder records every call it receives, so tests can assert on what
-// SeedMenus forwarded rather than on any real table.
+// Menus forwarded rather than on any real table.
 type fakeSeeder struct {
 	calls []fakeCall
 	err   error
@@ -38,10 +38,10 @@ type fakeSeeder struct {
 type fakeCall struct {
 	appCode string
 	menus   []MenuSpec
-	apis    []ApiSpec
+	apis    []APISpec
 }
 
-func (f *fakeSeeder) SeedMenus(tx *gorm.DB, appCode string, menus []MenuSpec, apis []ApiSpec) error {
+func (f *fakeSeeder) Menus(tx *gorm.DB, appCode string, menus []MenuSpec, apis []APISpec) error {
 	f.calls = append(f.calls, fakeCall{appCode: appCode, menus: menus, apis: apis})
 	return f.err
 }
@@ -55,13 +55,13 @@ func testDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-// SeedMenus must fail loudly, not silently do nothing, when no host has
+// Menus must fail loudly, not silently do nothing, when no host has
 // registered a Seeder - an application built against a host with no seeding
 // concept should see a normal error from its own migration.
 func TestSeedMenusWithoutRegisteredSeederReturnsError(t *testing.T) {
 	resetSeeder(t)
 
-	err := SeedMenus(testDB(t), "order", []MenuSpec{{Code: "root"}}, nil)
+	err := Menus(testDB(t), "order", []MenuSpec{{Code: "root"}}, nil)
 	if !errors.Is(err, ErrNoSeeder) {
 		t.Fatalf("got error %v, want ErrNoSeeder", err)
 	}
@@ -77,14 +77,14 @@ func TestSeedMenusForwardsToRegisteredSeeder(t *testing.T) {
 
 	menus := []MenuSpec{
 		{Code: "root", Kind: models.Directory, Title: "Order"},
-		{Code: "list", Parent: "root", Kind: models.Menu, Title: "Order list", Path: "/order", Component: "apps/order/index", ApiCodes: []string{"list"}},
+		{Code: "list", Parent: "root", Kind: models.Menu, Title: "Order list", Path: "/order", Component: "apps/order/index", APICodes: []string{"list"}},
 		{Code: "add", Parent: "list", Kind: models.Button, Permission: "order:add"},
 	}
-	apis := []ApiSpec{
+	apis := []APISpec{
 		{Code: "list", Title: "list orders", Path: "/api/v1/order", Method: "GET"},
 	}
 
-	if err := SeedMenus(testDB(t), "order", menus, apis); err != nil {
+	if err := Menus(testDB(t), "order", menus, apis); err != nil {
 		t.Fatalf("SeedMenus: %v", err)
 	}
 
@@ -95,7 +95,7 @@ func TestSeedMenusForwardsToRegisteredSeeder(t *testing.T) {
 	if call.appCode != "order" {
 		t.Errorf("appCode = %q, want %q", call.appCode, "order")
 	}
-	if len(call.menus) != 3 || call.menus[1].ApiCodes[0] != "list" {
+	if len(call.menus) != 3 || call.menus[1].APICodes[0] != "list" {
 		t.Errorf("menus were not forwarded unchanged: %+v", call.menus)
 	}
 	if len(call.apis) != 1 || call.apis[0].Path != "/api/v1/order" {
@@ -111,7 +111,7 @@ func TestSeedMenusWrapsSeederError(t *testing.T) {
 	fake := &fakeSeeder{err: fmt.Errorf("duplicate menu_id 8800")}
 	RegisterSeeder(fake)
 
-	err := SeedMenus(testDB(t), "order", []MenuSpec{{Code: "root"}}, nil)
+	err := Menus(testDB(t), "order", []MenuSpec{{Code: "root"}}, nil)
 	if err == nil {
 		t.Fatal("SeedMenus must return the Seeder's error, got nil")
 	}
@@ -124,7 +124,7 @@ func TestSeedMenusRejectsEmptyAppCode(t *testing.T) {
 	resetSeeder(t)
 	RegisterSeeder(&fakeSeeder{})
 
-	if err := SeedMenus(testDB(t), "", []MenuSpec{{Code: "root"}}, nil); err == nil {
+	if err := Menus(testDB(t), "", []MenuSpec{{Code: "root"}}, nil); err == nil {
 		t.Error("SeedMenus must reject an empty appCode")
 	}
 }

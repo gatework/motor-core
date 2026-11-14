@@ -19,152 +19,226 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+// Server owns a listening socket and its request-draining lifecycle.
 type Server struct {
-	name      string
-	mutex     sync.Mutex
-	srv       *http.Server
-	opts      options
-	isStarted bool
+	name  string
+	mutex sync.Mutex
+	opts  options
+	run   *serverRun
 }
 
-// New 实例化
-func New(name string, opts ...Option) *Server {
-	s := &Server{
-		name: name,
-		opts: setDefaultOption(),
-	}
-	s.Options(opts...)
-	return s
+type serverRun struct {
+	stop        chan struct{}
+	done        chan struct{}
+	cancelStart context.CancelFunc
+	stopOnce    sync.Once
+	err         error
 }
 
-// NewMetrics 新建默认监控服务
-func NewMetrics(opts ...Option) *Server {
-	s := &Server{
-		name: "metrics",
-		opts: setDefaultOption(),
+func (r *serverRun) stopAccepting() {
+	r.stopOnce.Do(func() {
+		r.cancelStart()
+		close(r.stop)
+	})
+}
+
+// New constructs a listener with bounded headers and idle keep-alive waits.
+func New(name string, opts ...Option) (*Server, error) {
+	if name == "" {
+		return nil, errors.New("listener: name is required")
 	}
-	s.opts.addr = ":3000"
+	s := &Server{name: name, opts: setDefaultOption()}
+	if err := s.Options(opts...); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+// NewMetrics constructs a metrics listener on port 3000 unless overridden.
+func NewMetrics(opts ...Option) (*Server, error) {
 	h := http.NewServeMux()
 	h.Handle("/metrics", promhttp.Handler())
-	s.opts.handler = h
-	s.Options(opts...)
-	return s
+	defaults := []Option{WithAddr(":3000"), WithHandler(h)}
+	return New("metrics", append(defaults, opts...)...)
 }
 
-// NewHealthz 默认健康检查服务
-func NewHealthz(opts ...Option) *Server {
-	s := &Server{
-		name: "healthz",
-		opts: setDefaultOption(),
-	}
-	s.opts.addr = ":4000"
+// NewHealthz constructs a health listener on port 4000 unless overridden.
+func NewHealthz(opts ...Option) (*Server, error) {
+	return newProbe("healthz", ":4000", "/healthz", opts)
+}
+
+// NewReadyz constructs a readiness listener on port 2000 unless overridden.
+func NewReadyz(opts ...Option) (*Server, error) {
+	return newProbe("readyz", ":2000", "/readyz", opts)
+}
+
+func newProbe(name, addr, path string, opts []Option) (*Server, error) {
 	h := http.NewServeMux()
-	h.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+	h.HandleFunc(path, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	s.opts.handler = h
-	s.Options(opts...)
-	return s
+	defaults := []Option{WithAddr(addr), WithHandler(h)}
+	return New(name, append(defaults, opts...)...)
 }
 
-func NewReadyz(opts ...Option) *Server {
-	s := &Server{
-		name: "readyz",
-		opts: setDefaultOption(),
-	}
-	s.opts.addr = ":2000"
-	h := http.NewServeMux()
-	h.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
-	s.opts.handler = h
-	s.Options(opts...)
-	return s
-}
-
-// Options 设置参数
-func (e *Server) Options(opts ...Option) {
+// Options validates settings for the next Run. Invalid changes are not applied.
+func (e *Server) Options(opts ...Option) error {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
-	for _, o := range opts {
-		o(&e.opts)
+	next := e.opts
+	for _, option := range opts {
+		if option == nil {
+			return errors.New("listener: option is required")
+		}
+		if err := option(&next); err != nil {
+			return err
+		}
 	}
+	if (next.certFile == "") != (next.keyFile == "") {
+		return errors.New("listener: certificate and key must be supplied together")
+	}
+	e.opts = next
+	return nil
 }
 
 func (e *Server) String() string {
 	return e.name
 }
 
-// Run binds before reporting readiness and returns the serving failure, if any.
-func (e *Server) Run(ctx context.Context) error {
+// Run binds before reporting readiness and owns request draining until completion.
+func (e *Server) Run(ctx context.Context) (runErr error) {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	e.mutex.Lock()
-	if e.isStarted {
+	if e.run != nil {
 		e.mutex.Unlock()
 		return errors.New("listener: already running")
 	}
-	e.isStarted = true
+	startCtx, cancelStart := context.WithCancel(ctx)
+	run := &serverRun{stop: make(chan struct{}), done: make(chan struct{}), cancelStart: cancelStart}
+	e.run = run
 	opts := e.opts
 	e.mutex.Unlock()
-	defer func() { e.mutex.Lock(); e.isStarted = false; e.srv = nil; e.mutex.Unlock() }()
+	defer cancelStart()
+	defer func() {
+		e.mutex.Lock()
+		run.err = runErr
+		e.run = nil
+		close(run.done)
+		e.mutex.Unlock()
+	}()
+
+	l, tlsConfig, err := listen(startCtx, opts)
+	if err != nil {
+		select {
+		case <-run.stop:
+			return nil
+		default:
+			return err
+		}
+	}
+	defer l.Close()
+	srv := &http.Server{
+		Handler:           opts.handler,
+		BaseContext:       func(net.Listener) context.Context { return ctx },
+		ReadHeaderTimeout: opts.readHeaderTimeout,
+		IdleTimeout:       opts.idleTimeout,
+	}
+	srv.TLSConfig = tlsConfig
+	serving := make(chan error, 1)
+	go func() { serving <- serve(srv, l) }()
+	if opts.endHook != nil {
+		defer opts.endHook()
+	}
+	if opts.startedHook != nil {
+		opts.startedHook()
+	}
+
+	var serveErr error
+	serveFinished := false
+	forceBudget := false
+	select {
+	case serveErr = <-serving:
+		serveFinished = true
+		forceBudget = !errors.Is(serveErr, http.ErrServerClosed)
+	case <-run.stop:
+	case <-ctx.Done():
+	}
+	// The run owns the drain. A Shutdown caller's deadline only ends its wait,
+	// so a later caller can continue waiting for the same active requests.
+	drained := make(chan error, 1)
+	go func() { drained <- srv.Shutdown(context.WithoutCancel(ctx)) }()
+	runErr = waitForDrain(ctx, srv, drained, forceBudget)
+	if !serveFinished {
+		serveErr = <-serving
+	}
+	if !errors.Is(serveErr, http.ErrServerClosed) {
+		runErr = errors.Join(runErr, serveErr)
+	}
+	return runErr
+}
+
+func waitForDrain(ctx context.Context, srv *http.Server, drained <-chan error, forceBudget bool) error {
+	if !forceBudget {
+		select {
+		case err := <-drained:
+			return err
+		case <-ctx.Done():
+		}
+	}
+	budget, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	select {
+	case err := <-drained:
+		return err
+	case <-budget.Done():
+		err := errors.Join(budget.Err(), srv.Close())
+		return errors.Join(err, <-drained)
+	}
+}
+
+// Shutdown stops acceptance and waits for this run's drain, within ctx's budget.
+// If the wait times out, a later call can keep waiting. Cancel the Run context to
+// force connection closure after its cleanup budget instead.
+func (e *Server) Shutdown(ctx context.Context) error {
+	e.mutex.Lock()
+	run := e.run
+	e.mutex.Unlock()
+	if run == nil {
+		return nil
+	}
+	run.stopAccepting()
+	select {
+	case <-run.done:
+		return run.err
+	default:
+	}
+	select {
+	case <-run.done:
+		return run.err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func listen(ctx context.Context, opts options) (net.Listener, *tls.Config, error) {
 	var tlsConfig *tls.Config
 	if opts.keyFile != "" || opts.certFile != "" {
 		cert, err := tls.LoadX509KeyPair(opts.certFile, opts.keyFile)
 		if err != nil {
-			return err
+			return nil, nil, err
 		}
 		tlsConfig = &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
 	}
 	lc := net.ListenConfig{}
 	l, err := lc.Listen(ctx, "tcp", opts.addr)
-	if err != nil {
-		return err
-	}
-	defer l.Close()
-	srv := &http.Server{Handler: opts.handler, BaseContext: func(net.Listener) context.Context { return ctx }}
-	e.mutex.Lock()
-	e.srv = srv
-	e.mutex.Unlock()
-	if tlsConfig != nil {
-		l = tls.NewListener(l, tlsConfig)
-	}
-	done := make(chan error, 1)
-	go func() { done <- srv.Serve(l) }()
-	if opts.startedHook != nil {
-		opts.startedHook()
-	}
-	select {
-	case err = <-done:
-	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-		defer cancel()
-		if shutdownErr := srv.Shutdown(shutdownCtx); shutdownErr != nil {
-			_ = srv.Close()
-			err = shutdownErr
-		}
-		serveErr := <-done
-		if err == nil {
-			err = serveErr
-		}
-	}
-	if opts.endHook != nil {
-		opts.endHook()
-	}
-	if errors.Is(err, http.ErrServerClosed) {
-		return nil
-	}
-	return err
+	return l, tlsConfig, err
 }
 
-// Shutdown stops acceptance and waits for active HTTP requests.
-func (e *Server) Shutdown(ctx context.Context) error {
-	e.mutex.Lock()
-	srv := e.srv
-	e.mutex.Unlock()
-	if srv == nil {
-		return nil
+func serve(srv *http.Server, listener net.Listener) error {
+	if srv.TLSConfig != nil {
+		return srv.ServeTLS(listener, "", "")
 	}
-	return srv.Shutdown(ctx)
+	return srv.Serve(listener)
 }

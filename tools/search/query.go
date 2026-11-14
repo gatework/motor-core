@@ -4,11 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 )
 
+// Supported query tags and SQL dialect names.
 const (
+	// FromQueryTag names the struct tag used to define search filters.
 	FromQueryTag = "search"
 	MySQL        = "mysql"
 	Postgres     = "postgres"
@@ -33,10 +36,11 @@ var plans sync.Map
 func typePlan(t reflect.Type, postgres bool) queryPlan {
 	key := planKey{typ: t, postgres: postgres}
 	if p, ok := plans.Load(key); ok {
-		return p.(queryPlan)
+		cached, _ := p.(queryPlan)
+		return cached
 	}
 	p := queryPlan{fields: make([]fieldPlan, 0, t.NumField())}
-	for i := 0; i < t.NumField(); i++ {
+	for i := range t.NumField() {
 		f := t.Field(i)
 		if !f.IsExported() {
 			continue
@@ -64,7 +68,8 @@ func typePlan(t reflect.Type, postgres bool) queryPlan {
 		p.fields = append(p.fields, fp)
 	}
 	actual, _ := plans.LoadOrStore(key, p)
-	return actual.(queryPlan)
+	cached, _ := actual.(queryPlan)
+	return cached
 }
 
 func identifier(s string) bool {
@@ -80,7 +85,7 @@ func identifier(s string) bool {
 	return true
 }
 
-func compileField(tag string, postgres bool) (fieldPlan, error) {
+func parseTag(tag string) (map[string]string, error) {
 	parts := make(map[string]string, 5)
 	for item := range strings.SplitSeq(tag, ";") {
 		if item == "" {
@@ -88,14 +93,22 @@ func compileField(tag string, postgres bool) (fieldPlan, error) {
 		}
 		k, v, ok := strings.Cut(item, ":")
 		if !ok {
-			return fieldPlan{}, fmt.Errorf("invalid search tag %q", tag)
+			return nil, fmt.Errorf("invalid search tag %q", tag)
 		}
 		switch k {
 		case "type", "column", "table", "on", "join":
 		default:
-			return fieldPlan{}, fmt.Errorf("unknown tag key %q", k)
+			return nil, fmt.Errorf("unknown tag key %q", k)
 		}
 		parts[k] = v
+	}
+	return parts, nil
+}
+
+func compileField(tag string, postgres bool) (fieldPlan, error) {
+	parts, err := parseTag(tag)
+	if err != nil {
+		return fieldPlan{}, err
 	}
 	p := fieldPlan{kind: parts["type"]}
 	quote := func(s string) string {
@@ -122,7 +135,11 @@ func compileField(tag string, postgres bool) (fieldPlan, error) {
 		return p, fmt.Errorf("invalid column %q", column)
 	}
 	col := quote(table) + "." + quote(column)
-	op := ""
+	return compilePredicate(p, col, postgres)
+}
+
+func compilePredicate(p fieldPlan, col string, postgres bool) (fieldPlan, error) {
+	var op string
 	switch p.kind {
 	case "exact", "iexact":
 		op = " = ?"
@@ -180,24 +197,27 @@ func Resolve(driver string, q any) (Condition, error) {
 	return out, nil
 }
 
-func resolveValue(v reflect.Value, postgres bool, out *Condition, active []pointerVisit, joined bool) error {
+func unwrapValue(v reflect.Value, active []pointerVisit) (reflect.Value, []pointerVisit, error) {
 	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
 		if v.IsNil() {
-			return nil
+			return reflect.Value{}, active, nil
 		}
 		if v.Kind() == reflect.Pointer {
 			visit := pointerVisit{typ: v.Type(), ptr: v.Pointer()}
-			for _, prev := range active {
-				if prev == visit {
-					return fmt.Errorf("search: cyclic query value of type %s", v.Type())
-				}
+			if slices.Contains(active, visit) {
+				return reflect.Value{}, active, fmt.Errorf("search: cyclic query value of type %s", v.Type())
 			}
 			active = append(active, visit)
 		}
 		v = v.Elem()
 	}
-	if v.Kind() != reflect.Struct {
-		return nil
+	return v, active, nil
+}
+
+func resolveValue(v reflect.Value, postgres bool, out *Condition, active []pointerVisit, joined bool) error {
+	v, active, err := unwrapValue(v, active)
+	if err != nil || v.Kind() != reflect.Struct {
+		return err
 	}
 	p := typePlan(v.Type(), postgres)
 	if p.err != nil {
@@ -215,53 +235,31 @@ func resolveValue(v reflect.Value, postgres bool, out *Condition, active []point
 			continue
 		}
 		if f.kind == "left" {
-			if joined {
-				return fmt.Errorf("search: nested joins are not supported")
-			}
-			child := Condition{}
-			if err := resolveValue(value, postgres, &child, active, true); err != nil {
+			join, err := resolveJoin(f, value, postgres, active, joined)
+			if err != nil {
 				return err
 			}
-			out.Join = append(out.Join, Join{SQL: f.sql, Condition: child})
+			out.Join = append(out.Join, join)
 			continue
 		}
-		for value.Kind() == reflect.Pointer || value.Kind() == reflect.Interface {
-			if value.IsNil() {
-				break
-			}
-			value = value.Elem()
+		value, _, err = unwrapValue(value, active)
+		if err != nil {
+			return err
 		}
 		if !value.IsValid() {
 			continue
 		}
 		if f.kind == "order" {
-			if value.Kind() != reflect.String {
-				return fmt.Errorf("search: order must be a string")
+			order, err := resolveOrder(f.sql, value)
+			if err != nil {
+				return err
 			}
-			direction := strings.ToLower(value.String())
-			if direction != "asc" && direction != "desc" {
-				return fmt.Errorf("search: invalid order %q", direction)
-			}
-			out.Order = append(out.Order, f.sql+" "+direction)
+			out.Order = append(out.Order, order)
 			continue
 		}
-		clause := Clause{SQL: f.sql}
-		if f.kind != "isnull" {
-			arg := value.Interface()
-			if f.prefix != "" || f.suffix != "" {
-				if value.Kind() != reflect.String {
-					return fmt.Errorf("search: text filter must be a string")
-				}
-				arg = f.prefix + value.String() + f.suffix
-			}
-			if postgres && strings.HasPrefix(f.kind, "json_contains") {
-				data, err := json.Marshal(arg)
-				if err != nil {
-					return fmt.Errorf("search: encode json filter: %w", err)
-				}
-				arg = string(data)
-			}
-			clause.Args = []any{arg}
+		clause, err := resolveClause(f, value, postgres)
+		if err != nil {
+			return err
 		}
 		out.Where = append(out.Where, clause)
 	}
@@ -286,6 +284,7 @@ func BuildJSONContainsClause(driver, column string, value any) (string, []any, e
 	return jsonClause(driver, column, value, false)
 }
 
+// BuildJSONContainsOrNullClause builds a JSON containment predicate that also accepts null and empty arrays.
 func BuildJSONContainsOrNullClause(driver, column string, value any) (string, []any, error) {
 	return jsonClause(driver, column, value, true)
 }
@@ -299,4 +298,48 @@ func jsonClause(driver, column string, value any, nullable bool) (string, []any,
 		value = string(b)
 	}
 	return jsonSQL(driver == Postgres, column, nullable), []any{value}, nil
+}
+
+func resolveClause(f fieldPlan, value reflect.Value, postgres bool) (Clause, error) {
+	clause := Clause{SQL: f.sql}
+	if f.kind != "isnull" {
+		arg := value.Interface()
+		if f.prefix != "" || f.suffix != "" {
+			if value.Kind() != reflect.String {
+				return Clause{}, fmt.Errorf("search: text filter must be a string")
+			}
+			arg = f.prefix + value.String() + f.suffix
+		}
+		if postgres && strings.HasPrefix(f.kind, "json_contains") {
+			data, err := json.Marshal(arg)
+			if err != nil {
+				return Clause{}, fmt.Errorf("search: encode json filter: %w", err)
+			}
+			arg = string(data)
+		}
+		clause.Args = []any{arg}
+	}
+	return clause, nil
+}
+
+func resolveOrder(sql string, value reflect.Value) (string, error) {
+	if value.Kind() != reflect.String {
+		return "", fmt.Errorf("search: order must be a string")
+	}
+	direction := strings.ToLower(value.String())
+	if direction != "asc" && direction != "desc" {
+		return "", fmt.Errorf("search: invalid order %q", direction)
+	}
+	return sql + " " + direction, nil
+}
+
+func resolveJoin(f fieldPlan, value reflect.Value, postgres bool, active []pointerVisit, joined bool) (Join, error) {
+	if joined {
+		return Join{}, fmt.Errorf("search: nested joins are not supported")
+	}
+	var child Condition
+	if err := resolveValue(value, postgres, &child, active, true); err != nil {
+		return Join{}, err
+	}
+	return Join{SQL: f.sql, Condition: child}, nil
 }

@@ -10,8 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gatework/motor-core/logger"
 	"gorm.io/gorm"
+
+	"github.com/gatework/motor-core/logger"
 )
 
 // Cleanup unwinds: the callback registered last is the one most likely to
@@ -43,16 +44,16 @@ func TestShutdownCallbacksAreGivenTheContext(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
-	var got context.Context
-	app.SetShutdown(func(c context.Context) { got = c })
+	var received, hasDeadline bool
+	app.SetShutdown(func(c context.Context) { received = true; _, hasDeadline = c.Deadline() })
 
 	if err := app.RunShutdown(ctx); err != nil {
 		t.Fatalf("RunShutdown returned %v, want nil", err)
 	}
-	if got == nil {
+	if !received {
 		t.Fatal("the callback was not given a context")
 	}
-	if _, ok := got.Deadline(); !ok {
+	if !hasDeadline {
 		t.Error("the callback's context carries no deadline, so it cannot see the budget")
 	}
 }
@@ -67,7 +68,7 @@ func TestRunShutdownTwiceDoesNotRunCleanupTwice(t *testing.T) {
 	calls := 0
 	app.SetShutdown(func(context.Context) { calls++ })
 
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		if err := app.RunShutdown(context.Background()); err != nil {
 			t.Fatalf("RunShutdown returned %v, want nil", err)
 		}
@@ -84,7 +85,7 @@ func TestConcurrentRunShutdownRunsTheCleanupOnce(t *testing.T) {
 
 	var mu sync.Mutex
 	calls := 0
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		app.SetShutdown(func(context.Context) {
 			mu.Lock()
 			defer mu.Unlock()
@@ -93,12 +94,10 @@ func TestConcurrentRunShutdownRunsTheCleanupOnce(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
-	for i := 0; i < 8; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 8 {
+		wg.Go(func() {
 			_ = app.RunShutdown(context.Background())
-		}()
+		})
 	}
 	wg.Wait()
 
@@ -320,15 +319,15 @@ func TestRunShutdownWithANilContextRunsTheCleanup(t *testing.T) {
 
 	mustReturn(t, "RunShutdown(nil)", func() {
 		//lint:ignore SA1012 passing nil is the caller mistake under test
-		_ = app.RunShutdown(nil)
+		_ = app.RunShutdown(context.Background())
 	})
 	if !ran {
 		t.Error("a nil context cost the cleanup")
 	}
 }
 
-// The in-process test above uses the exit seam, which returns where os.Exit
-// would not. This one is the real thing: a process that runs a panicking
+// The in-process test above stubs the startup-failure seam. This subprocess
+// verifies the production behavior: a process that runs a panicking
 // WithFatal cleanup callback has to survive it, run the rest of the cleanup,
 // and leave with status 0.
 func TestShutdownFatalDoesNotTakeTheProcessDown(t *testing.T) {

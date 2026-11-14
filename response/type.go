@@ -7,11 +7,12 @@
 
 package response
 
+// Responses defines the fields populated by response helpers.
 type Responses interface {
-	SetCode(int32)
-	SetTraceID(string)
-	SetMsg(string)
-	SetData(interface{})
-	SetSuccess(bool)
+	SetCode(code int32)
+	SetTraceID(traceID string)
+	SetMsg(message string)
+	SetData(data any)
+	SetSuccess(success bool)
 	Clone() Responses
 }

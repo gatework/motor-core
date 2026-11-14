@@ -18,7 +18,7 @@ type Options struct {
 	Level Level
 	// Fields are fields to always be logged
 	// Fields 是始终要记录的字段
-	Fields map[string]interface{}
+	Fields map[string]any
 	// Out is the output writer for the logger. default is `os.Stderr`
 	// Out 是日志记录器的输出写入器，默认是 `os.Stderr`
 	Out io.Writer
@@ -60,7 +60,7 @@ type Options struct {
 
 // WithFields sets default fields for the logger
 // WithFields 设置日志记录器的默认字段
-func WithFields(fields map[string]interface{}) Option {
+func WithFields(fields map[string]any) Option {
 	return func(args *Options) {
 		args.Fields = copyFields(fields)
 	}
@@ -151,9 +151,9 @@ func WithRotation(maxSize, maxAge, maxBackups int, compress bool) Option {
 // WithSampling 设置日志采样配置
 func WithSampling(config SamplingConfig) Option {
 	return func(o *Options) {
-		copy := config
-		copy.ExcludeLevels = slices.Clone(config.ExcludeLevels)
-		o.Sampling = &copy
+		snapshot := config
+		snapshot.ExcludeLevels = slices.Clone(config.ExcludeLevels)
+		o.Sampling = &snapshot
 	}
 }
 
@@ -161,8 +161,8 @@ func WithSampling(config SamplingConfig) Option {
 // WithAsync 设置异步日志配置
 func WithAsync(config AsyncConfig) Option {
 	return func(o *Options) {
-		copy := config
-		o.Async = &copy
+		snapshot := config
+		o.Async = &snapshot
 	}
 }
 
@@ -170,9 +170,9 @@ func WithAsync(config AsyncConfig) Option {
 // WithSanitizer 设置脱敏配置
 func WithSanitizer(config SanitizerConfig) Option {
 	return func(o *Options) {
-		copy := config
-		copy.Rules = slices.Clone(config.Rules)
-		o.Sanitizer = &copy
+		snapshot := config
+		snapshot.Rules = slices.Clone(config.Rules)
+		o.Sanitizer = &snapshot
 	}
 }
 
@@ -181,7 +181,7 @@ func WithSanitizer(config SanitizerConfig) Option {
 func DefaultOptions() Options {
 	return Options{
 		Level:           InfoLevel,
-		Fields:          make(map[string]interface{}),
+		Fields:          make(map[string]any),
 		Out:             nil,
 		CallerSkipCount: 3,
 		Name:            "",
@@ -204,6 +204,7 @@ func resolveOptions(opts []Option) Options {
 	return options
 }
 
+// WithEnableStacktrace controls stacktrace capture for error and fatal entries.
 func WithEnableStacktrace(enabled bool) Option {
 	return func(opts *Options) { opts.EnableStacktrace = enabled }
 }

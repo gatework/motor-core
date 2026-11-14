@@ -16,21 +16,19 @@ import (
 func TestCallersAppendingToTheSnapshotDoNotShare(t *testing.T) {
 	e := New()
 	noop := func(r *gin.RouterGroup, hand ...*gin.HandlerFunc) {}
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		e.AddHandler("t", noop)
 	}
 
 	var wg sync.WaitGroup
-	for i := 0; i < 8; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := 0; j < 200; j++ {
+	for range 8 {
+		wg.Go(func() {
+			for range 200 {
 				for _, fns := range e.AllHandlers() {
 					_ = append(fns, noop)
 				}
 			}
-		}()
+		})
 	}
 	wg.Wait()
 }

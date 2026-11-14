@@ -2,15 +2,18 @@ package config
 
 import (
 	"bytes"
+	stdjson "encoding/json"
+	"errors"
 	"sync"
 	"time"
+
+	"log/slog"
 
 	"github.com/gatework/motor-core/config/loader"
 	"github.com/gatework/motor-core/config/loader/memory"
 	"github.com/gatework/motor-core/config/reader"
 	"github.com/gatework/motor-core/config/reader/json"
 	"github.com/gatework/motor-core/config/source"
-	"log/slog"
 )
 
 // Config owns the current configuration snapshot and its reload watcher.
@@ -50,6 +53,173 @@ func newConfig(opts ...Option) (*Config, error) {
 	go c.run()
 
 	return &c, nil
+}
+
+// Options returns the configured dependencies with a copied source list.
+func (c *Config) Options() Options {
+	options := c.opts
+	options.Source = append([]source.Source(nil), options.Source...)
+	return options
+}
+
+// Map returns an owned copy of the current configuration tree.
+func (c *Config) Map() map[string]any {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.vals.Map()
+}
+
+// Scan decodes the current snapshot into v without holding configuration locks.
+func (c *Config) Scan(v any) error {
+	// User-defined UnmarshalJSON methods run without holding manager locks.
+	return c.Get().Scan(v)
+}
+
+// Sync sync loads all the sources, calls the parser and updates the config
+func (c *Config) Sync() error {
+	if err := c.opts.Loader.Sync(); err != nil {
+		return err
+	}
+
+	snap, err := c.opts.Loader.Snapshot()
+	if err != nil {
+		return err
+	}
+
+	return c.apply(snap, false)
+}
+
+// Close stops watching and releases owned loaders after the reload loop exits.
+func (c *Config) Close() error {
+	c.exitOnce.Do(func() {
+		close(c.exit)
+		if c.ownsLoader {
+			c.closeErr = c.opts.Loader.Close()
+		}
+	})
+	if c.done != nil {
+		<-c.done
+	}
+	return c.closeErr
+}
+
+// Get returns an independent value snapshot at path.
+func (c *Config) Get(path ...string) reader.Value {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	// did sync actually work?
+	if c.vals != nil {
+		return c.vals.Get(path...)
+	}
+
+	// no value
+	return newValue()
+}
+
+// Set encodes caller values before taking the configuration lock. A failed
+// conversion leaves the current snapshot unchanged.
+func (c *Config) Set(val any, path ...string) error {
+	data, err := stdjson.Marshal(val)
+	if err != nil {
+		return err
+	}
+	var normalized any
+	decoder := stdjson.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(&normalized); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.vals == nil {
+		return errors.New("config: values are not initialized")
+	}
+	return c.vals.Set(normalized, path...)
+}
+
+// Del removes a path from the current in-memory values.
+func (c *Config) Del(path ...string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.vals != nil {
+		c.vals.Del(path...)
+	}
+
+}
+
+// Bytes returns the current configuration encoded as JSON.
+func (c *Config) Bytes() []byte {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.vals == nil {
+		return []byte{}
+	}
+
+	return c.vals.Bytes()
+}
+
+// Load merges sources into the configuration and begins watching them.
+func (c *Config) Load(sources ...source.Source) error {
+	if err := c.opts.Loader.Load(sources...); err != nil {
+		return err
+	}
+
+	snap, err := c.opts.Loader.Snapshot()
+	if err != nil {
+		return err
+	}
+
+	return c.apply(snap, false)
+}
+
+// Watch returns a caller-owned watcher for changes at path.
+func (c *Config) Watch(path ...string) (Watcher, error) {
+	readerValue := c.Get(path...)
+
+	w, err := c.opts.Loader.Watch(path...)
+	if err != nil {
+		return nil, err
+	}
+
+	return &watcher{
+		lw:    w,
+		rd:    c.opts.Reader,
+		path:  path,
+		value: readerValue,
+	}, nil
+}
+
+func (c *Config) String() string {
+	return "config"
+}
+
+func (w *watcher) Next() (reader.Value, error) {
+	for {
+		s, err := w.lw.Next()
+		if err != nil {
+			return nil, err
+		}
+
+		// only process changes
+		if bytes.Equal(w.value.Bytes(), s.ChangeSet.Data) {
+			continue
+		}
+
+		v, err := w.rd.Values(s.ChangeSet)
+		if err != nil {
+			return nil, err
+		}
+
+		w.value = v.Get()
+		return w.value, nil
+	}
+}
+
+func (w *watcher) Stop() error {
+	return w.lw.Stop()
 }
 
 func (c *Config) init(opts ...Option) (initErr error) {
@@ -93,12 +263,6 @@ func (c *Config) init(opts ...Option) (initErr error) {
 	}
 
 	return nil
-}
-
-func (c *Config) Options() Options {
-	options := c.opts
-	options.Source = append([]source.Source(nil), options.Source...)
-	return options
 }
 
 func (c *Config) run() {
@@ -199,145 +363,4 @@ func (c *Config) apply(snap *loader.Snapshot, notify bool) error {
 		c.opts.Entity.OnChange()
 	}
 	return nil
-}
-
-func (c *Config) Map() map[string]interface{} {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.vals.Map()
-}
-
-func (c *Config) Scan(v interface{}) error {
-	// User-defined UnmarshalJSON methods run without holding manager locks.
-	return c.Get().Scan(v)
-}
-
-// Sync sync loads all the sources, calls the parser and updates the config
-func (c *Config) Sync() error {
-	if err := c.opts.Loader.Sync(); err != nil {
-		return err
-	}
-
-	snap, err := c.opts.Loader.Snapshot()
-	if err != nil {
-		return err
-	}
-
-	return c.apply(snap, false)
-}
-
-func (c *Config) Close() error {
-	c.exitOnce.Do(func() {
-		close(c.exit)
-		if c.ownsLoader {
-			c.closeErr = c.opts.Loader.Close()
-		}
-	})
-	if c.done != nil {
-		<-c.done
-	}
-	return c.closeErr
-}
-
-func (c *Config) Get(path ...string) reader.Value {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	// did sync actually work?
-	if c.vals != nil {
-		return c.vals.Get(path...)
-	}
-
-	// no value
-	return newValue()
-}
-
-func (c *Config) Set(val interface{}, path ...string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.vals != nil {
-		c.vals.Set(val, path...)
-	}
-
-}
-
-func (c *Config) Del(path ...string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.vals != nil {
-		c.vals.Del(path...)
-	}
-
-}
-
-func (c *Config) Bytes() []byte {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	if c.vals == nil {
-		return []byte{}
-	}
-
-	return c.vals.Bytes()
-}
-
-func (c *Config) Load(sources ...source.Source) error {
-	if err := c.opts.Loader.Load(sources...); err != nil {
-		return err
-	}
-
-	snap, err := c.opts.Loader.Snapshot()
-	if err != nil {
-		return err
-	}
-
-	return c.apply(snap, false)
-}
-
-func (c *Config) Watch(path ...string) (Watcher, error) {
-	readerValue := c.Get(path...)
-
-	w, err := c.opts.Loader.Watch(path...)
-	if err != nil {
-		return nil, err
-	}
-
-	return &watcher{
-		lw:    w,
-		rd:    c.opts.Reader,
-		path:  path,
-		value: readerValue,
-	}, nil
-}
-
-func (c *Config) String() string {
-	return "config"
-}
-
-func (w *watcher) Next() (reader.Value, error) {
-	for {
-		s, err := w.lw.Next()
-		if err != nil {
-			return nil, err
-		}
-
-		// only process changes
-		if bytes.Equal(w.value.Bytes(), s.ChangeSet.Data) {
-			continue
-		}
-
-		v, err := w.rd.Values(s.ChangeSet)
-		if err != nil {
-			return nil, err
-		}
-
-		w.value = v.Get()
-		return w.value, nil
-	}
-}
-
-func (w *watcher) Stop() error {
-	return w.lw.Stop()
 }

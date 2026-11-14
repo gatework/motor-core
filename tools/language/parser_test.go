@@ -54,3 +54,28 @@ func TestParseAcceptLanguageNormalisesUnderscores(t *testing.T) {
 		})
 	}
 }
+
+func TestParseAcceptLanguageQuality(t *testing.T) {
+	for _, tc := range []struct {
+		name, header string
+		want         []string
+	}{
+		{"zero quality is excluded", "en;q=0,zh;q=1", []string{"zh"}},
+		{"implicit quality is one", "en;q=1,fr,de;q=0.9", []string{"en", "fr", "de"}},
+		{"equal quality preserves order", "fr;q=0.7,de;q=0.7,en;q=0.7", []string{"fr", "de", "en"}},
+		{"invalid quality is rejected", "en;q=bad", []string{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ParseAcceptLanguage(tc.header, nil)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("got=%v want=%v", got, tc.want)
+			}
+		})
+	}
+}
+func TestParseAcceptLanguageNormalizesSupportedTags(t *testing.T) {
+	got := ParseAcceptLanguage("zh_cn,en", []string{"ZH_CN"})
+	if !reflect.DeepEqual(got, []string{"zh-cn"}) {
+		t.Fatalf("got=%v", got)
+	}
+}

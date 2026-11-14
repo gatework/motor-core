@@ -26,12 +26,12 @@ func TestFlagsrc_Read(t *testing.T) {
 		t.Error(err)
 	}
 
-	var actual map[string]interface{}
+	var actual map[string]any
 	if err := json.Unmarshal(c.Data, &actual); err != nil {
 		t.Error(err)
 	}
 
-	actualDB := actual["database"].(map[string]interface{})
+	actualDB := actual["database"].(map[string]any)
 	if actualDB["host"] != *dbhost {
 		t.Errorf("expected %v got %v", *dbhost, actualDB["host"])
 	}
@@ -54,12 +54,12 @@ func TestFlagsrc_ReadAll(t *testing.T) {
 		t.Error(err)
 	}
 
-	var actual map[string]interface{}
+	var actual map[string]any
 	if err := json.Unmarshal(c.Data, &actual); err != nil {
 		t.Error(err)
 	}
 
-	actualDB := actual["database"].(map[string]interface{})
+	actualDB := actual["database"].(map[string]any)
 
 	// unset flag defaults should be loaded
 	if actualDB["user"] != *dbuser {

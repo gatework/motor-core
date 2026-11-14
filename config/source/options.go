@@ -1,26 +1,30 @@
 package source
 
 import (
-	"context"
-
 	"github.com/gatework/motor-core/config/encoder"
 	"github.com/gatework/motor-core/config/encoder/json"
 )
 
+// Options contains typed construction settings shared by configuration sources.
 type Options struct {
 	// Encoder
 	Encoder encoder.Encoder
 
-	// for alternative data
-	Context context.Context
+	// Source-specific settings are explicit rather than carried in context values.
+	FilePath         string
+	ChangeSet        *ChangeSet
+	Prefixes         []string
+	StrippedPrefixes []string
+	IncludeUnset     bool
 }
 
+// Option changes configuration source settings.
 type Option func(o *Options)
 
+// NewOptions applies source options to the JSON encoder default.
 func NewOptions(opts ...Option) Options {
 	options := Options{
 		Encoder: json.NewEncoder(),
-		Context: context.Background(),
 	}
 
 	for _, o := range opts {

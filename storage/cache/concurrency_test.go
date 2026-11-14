@@ -33,9 +33,7 @@ func TestMemoryExpireDoesNotRaceWithReaders(t *testing.T) {
 	stop := make(chan struct{})
 	var readers sync.WaitGroup
 
-	readers.Add(1)
-	go func() {
-		defer readers.Done()
+	readers.Go(func() {
 		for {
 			select {
 			case <-stop:
@@ -47,9 +45,9 @@ func TestMemoryExpireDoesNotRaceWithReaders(t *testing.T) {
 				}
 			}
 		}
-	}()
+	})
 
-	for i := 0; i < 2000; i++ {
+	for range 2000 {
 		if err := m.Expire(context.Background(), "k", time.Minute); err != nil {
 			t.Fatal(err)
 		}
@@ -70,12 +68,12 @@ func TestMemoryMixedTrafficIsRaceFree(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
-	for i := 0; i < concurrentWriters; i++ {
+	for i := range concurrentWriters {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
 			key := fmt.Sprintf("key-%d", id)
-			for j := 0; j < opsPerWriter; j++ {
+			for j := range opsPerWriter {
 				if err := m.Set(context.Background(), key, strconv.Itoa(j), time.Minute); err != nil {
 					t.Error(err)
 					return
@@ -110,7 +108,7 @@ func BenchmarkMemCacheGet(b *testing.B) {
 	ctx := context.Background()
 	m := New(Options{SweepInterval: 0})
 	defer func() { _ = m.Close() }()
-	for i := 0; i < 1024; i++ {
+	for i := range 1024 {
 		if err := m.Set(ctx, "k"+strconv.Itoa(i), "v", time.Hour); err != nil {
 			b.Fatal(err)
 		}

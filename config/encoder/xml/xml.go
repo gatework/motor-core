@@ -1,3 +1,4 @@
+// Package xml encodes configuration values as XML.
 package xml
 
 import (
@@ -8,11 +9,11 @@ import (
 
 type xmlEncoder struct{}
 
-func (x xmlEncoder) Encode(v interface{}) ([]byte, error) {
+func (x xmlEncoder) Encode(v any) ([]byte, error) {
 	return xml.Marshal(v)
 }
 
-func (x xmlEncoder) Decode(d []byte, v interface{}) error {
+func (x xmlEncoder) Decode(d []byte, v any) error {
 	return xml.Unmarshal(d, v)
 }
 
@@ -20,6 +21,7 @@ func (x xmlEncoder) String() string {
 	return "xml"
 }
 
+// NewEncoder constructs a XML configuration encoder.
 func NewEncoder() encoder.Encoder {
 	return xmlEncoder{}
 }

@@ -63,7 +63,7 @@ func TestMemCacheSoak(t *testing.T) {
 	var wg sync.WaitGroup
 
 	const workers = 8
-	for w := 0; w < workers; w++ {
+	for w := range workers {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
@@ -124,9 +124,9 @@ func TestMemCacheCloseReleasesEverything(t *testing.T) {
 	ctx := context.Background()
 	before := runtime.NumGoroutine()
 
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		m := New(Options{SweepInterval: time.Millisecond})
-		for j := 0; j < 100; j++ {
+		for j := range 100 {
 			if err := m.Set(ctx, "k"+strconv.Itoa(j), "v", time.Minute); err != nil {
 				t.Fatal(err)
 			}

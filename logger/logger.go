@@ -49,12 +49,15 @@ func SetDefault(log Logger) {
 	defaultState.Unlock()
 }
 
+// Log records an entry through the process default logger.
 func Log(ctx context.Context, level Level, message string, fields ...Field) {
 	Default().Log(ctx, level, message, fields...)
 }
 
+// With returns a field view that borrows the logger resources.
 func With(fields ...Field) Logger { return Default().With(fields...) }
 
+// Logf formats and records an entry with the process default logger.
 func Logf(level Level, format string, args ...any) {
 	log := Default()
 	if log.Enabled(level) {
@@ -76,10 +79,15 @@ func bind(log Logger, fields []Field) Logger {
 	return &boundLogger{logger: log, fields: slices.Clone(fields)}
 }
 
+// Enabled reports whether the wrapped logger accepts level.
 func (b *boundLogger) Enabled(level Level) bool { return b.logger.Enabled(level) }
+
+// With returns a field view that borrows the logger resources.
 func (b *boundLogger) With(fields ...Field) Logger {
 	return &boundLogger{logger: b.logger, fields: mergeFields(b.fields, fields)}
 }
+
+// Log records an entry with per-call context and structured fields.
 func (b *boundLogger) Log(ctx context.Context, level Level, message string, fields ...Field) {
 	if b.Enabled(level) {
 		b.logger.Log(ctx, level, message, mergeFields(b.fields, fields)...)
@@ -147,10 +155,14 @@ func newRoot(output Logger, opts Options) *root {
 	fields := FieldsFromMap(opts.Fields)
 	return &root{Logger: bind(pipeline, fields), owner: pipeline, fields: fields}
 }
+
+// Close completes owned work and closes the wrapped root once.
 func (r *root) Close() error {
 	r.once.Do(func() { r.closeErr = closeLogger(r.owner) })
 	return r.closeErr
 }
+
+// Sync waits for accepted entries and synchronizes the wrapped output.
 func (r *root) Sync() error { return syncLogger(r.owner) }
 
 func closeLogger(log Logger) error {

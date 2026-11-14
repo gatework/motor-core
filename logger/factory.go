@@ -30,11 +30,14 @@ var adapterRegistry = map[string]AdapterFactory{
 	},
 }
 
+// RegisterAdapter registers a named factory for subsequent configuration-based construction.
 func RegisterAdapter(name string, factory AdapterFactory) {
 	registryMu.Lock()
 	defer registryMu.Unlock()
 	adapterRegistry[name] = factory
 }
+
+// GetAdapter looks up a registered factory without constructing a logger.
 func GetAdapter(name string) (AdapterFactory, error) {
 	registryMu.RLock()
 	factory := adapterRegistry[name]
@@ -44,6 +47,8 @@ func GetAdapter(name string) (AdapterFactory, error) {
 	}
 	return factory, nil
 }
+
+// ListAdapters returns registered adapter names in sorted order.
 func ListAdapters() []string {
 	registryMu.RLock()
 	names := make([]string, 0, len(adapterRegistry))
@@ -55,6 +60,7 @@ func ListAdapters() []string {
 	return names
 }
 
+// NewFromConfig validates cfg and constructs an adapter with its configured decorators.
 func NewFromConfig(cfg *Config) (Logger, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("logger: invalid config: %w", err)
@@ -63,69 +69,9 @@ func NewFromConfig(cfg *Config) (Logger, error) {
 	if err != nil {
 		return nil, err
 	}
-	opts := []Option{
-		WithLevel(parseLevel(cfg.Core.Level)), WithName(cfg.Core.Name),
-		WithFields(cfg.Core.Fields), WithEnableCaller(cfg.Core.EnableCaller),
-		WithCallerSkipCount(cfg.Core.CallerSkip), WithEncoder(cfg.Output.Format),
-		WithEnableStacktrace(cfg.Core.EnableStacktrace),
-	}
-	if cfg.Output.Console != nil {
-		opts = append(opts, WithStdout(cfg.Output.Console.Enabled))
-	}
-	if file := cfg.Output.File; file != nil && file.Enabled {
-		opts = append(opts, WithPath(file.Path), WithRotation(file.MaxSize, file.MaxAge, file.MaxBackups, file.Compress))
-		opts = append(opts, func(o *Options) { o.LocalTime = file.LocalTime })
-	}
-	if plugin := cfg.Plugins.Sampling; plugin != nil && plugin.Enabled {
-		excluded := make([]Level, 0, len(plugin.ExcludeLevels))
-		for _, name := range plugin.ExcludeLevels {
-			excluded = append(excluded, parseLevel(name))
-		}
-		opts = append(opts, WithSampling(SamplingConfig{
-			Initial: plugin.Initial, Thereafter: plugin.Thereafter, Tick: plugin.Tick, ExcludeLevels: excluded,
-		}))
-	}
-	if plugin := cfg.Plugins.Sanitize; plugin != nil && plugin.Enabled {
-		sanitizer := SanitizerConfig{Enabled: true}
-		matchers := make([]*regexp.Regexp, 0, len(plugin.Rules))
-		rules := make([]SanitizerRule, 0, len(plugin.Rules))
-		for _, configured := range plugin.Rules {
-			pattern, err := regexp.Compile("(?i)" + configured.FieldPattern)
-			if err != nil {
-				return nil, fmt.Errorf("logger: sanitize pattern: %w", err)
-			}
-			rule := SanitizerRule{MaskChar: configured.MaskChar}
-			switch configured.Strategy {
-			case "mask_all":
-				rule.Strategy = "mask"
-			case "mask_partial":
-				rule.Strategy = "mask"
-				rule.KeepPrefix = 3
-				rule.KeepSuffix = 4
-			case "hash":
-				rule.Strategy = "hash"
-			}
-			matchers = append(matchers, pattern)
-			rules = append(rules, rule)
-		}
-		sanitizer.CustomMatcher = func(name string) *SanitizerRule {
-			for i, matcher := range matchers {
-				if matcher.MatchString(name) {
-					return &rules[i]
-				}
-			}
-			return nil
-		}
-		opts = append(opts, WithSanitizer(sanitizer))
-	}
-	if plugin := cfg.Plugins.Async; plugin != nil && plugin.Enabled {
-		policy := "block"
-		if plugin.DropOnFull {
-			policy = "drop"
-		}
-		opts = append(opts, WithAsync(AsyncConfig{
-			BufferSize: plugin.BufferSize, FlushInterval: plugin.FlushInterval, DropPolicy: policy,
-		}))
+	opts, err := configOptions(cfg)
+	if err != nil {
+		return nil, err
 	}
 	log, err := factory(opts...)
 	if err != nil {
@@ -158,13 +104,96 @@ func SetupLogger(cfg *Config) (Logger, error) {
 	SetDefault(log)
 	return log, nil
 }
+
+// NewDevelopmentLogger constructs a debug-level console adapter with caller information.
 func NewDevelopmentLogger() (*Logrus, error) {
 	return NewLogrusLogger(WithLevel(DebugLevel), WithStdout(true), WithEncoder("console"), WithEnableCaller(true))
 }
+
+// NewProductionLogger constructs a sampled JSON adapter that owns its rotating file.
 func NewProductionLogger(path string) (*Logrus, error) {
 	return NewLogrusLogger(
 		WithLevel(InfoLevel), WithPath(path), WithEncoder("json"),
 		WithSampling(SamplingConfig{Initial: 10, Thereafter: 100, Tick: time.Second}),
 	)
 }
+
+// NewTestLogger constructs a debug-level text adapter for test diagnostics.
 func NewTestLogger() *Text { return NewLogger(WithLevel(DebugLevel)) }
+
+func configOptions(cfg *Config) ([]Option, error) {
+	opts := []Option{
+		WithLevel(parseLevel(cfg.Core.Level)), WithName(cfg.Core.Name),
+		WithFields(cfg.Core.Fields), WithEnableCaller(cfg.Core.EnableCaller),
+		WithCallerSkipCount(cfg.Core.CallerSkip), WithEncoder(cfg.Output.Format),
+		WithEnableStacktrace(cfg.Core.EnableStacktrace),
+	}
+	if cfg.Output.Console != nil {
+		opts = append(opts, WithStdout(cfg.Output.Console.Enabled))
+	}
+	if file := cfg.Output.File; file != nil && file.Enabled {
+		opts = append(opts, WithPath(file.Path), WithRotation(file.MaxSize, file.MaxAge, file.MaxBackups, file.Compress))
+		opts = append(opts, func(o *Options) { o.LocalTime = file.LocalTime })
+	}
+	if plugin := cfg.Plugins.Sampling; plugin != nil && plugin.Enabled {
+		excluded := make([]Level, 0, len(plugin.ExcludeLevels))
+		for _, name := range plugin.ExcludeLevels {
+			excluded = append(excluded, parseLevel(name))
+		}
+		opts = append(opts, WithSampling(SamplingConfig{
+			Initial: plugin.Initial, Thereafter: plugin.Thereafter, Tick: plugin.Tick, ExcludeLevels: excluded,
+		}))
+	}
+	if plugin := cfg.Plugins.Sanitize; plugin != nil && plugin.Enabled {
+		sanitizer, err := plugin.sanitizerConfig()
+		if err != nil {
+			return nil, err
+		}
+		opts = append(opts, WithSanitizer(sanitizer))
+	}
+	if plugin := cfg.Plugins.Async; plugin != nil && plugin.Enabled {
+		policy := "block"
+		if plugin.DropOnFull {
+			policy = "drop"
+		}
+		opts = append(opts, WithAsync(AsyncConfig{
+			BufferSize: plugin.BufferSize, FlushInterval: plugin.FlushInterval, DropPolicy: policy,
+		}))
+	}
+	return opts, nil
+}
+
+func (p *SanitizePluginConfig) sanitizerConfig() (SanitizerConfig, error) {
+	sanitizer := SanitizerConfig{Enabled: true}
+	matchers := make([]*regexp.Regexp, 0, len(p.Rules))
+	rules := make([]SanitizerRule, 0, len(p.Rules))
+	for _, configured := range p.Rules {
+		pattern, err := regexp.Compile("(?i)" + configured.FieldPattern)
+		if err != nil {
+			return SanitizerConfig{}, fmt.Errorf("logger: sanitize pattern: %w", err)
+		}
+		rule := SanitizerRule{MaskChar: configured.MaskChar}
+		switch configured.Strategy {
+		case "mask_all":
+			rule.Strategy = "mask"
+		case "mask_partial":
+			rule.Strategy = "mask"
+			rule.KeepPrefix = 3
+			rule.KeepSuffix = 4
+		case "hash":
+			rule.Strategy = "hash"
+		}
+		matchers = append(matchers, pattern)
+		rules = append(rules, rule)
+	}
+	sanitizer.CustomMatcher = func(name string) *SanitizerRule {
+		for i, matcher := range matchers {
+			if matcher.MatchString(name) {
+				return &rules[i]
+			}
+		}
+		return nil
+	}
+
+	return sanitizer, nil
+}

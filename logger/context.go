@@ -4,6 +4,7 @@ import "context"
 
 type loggerKey struct{}
 
+// FromContext returns the helper in ctx or a helper over the process default.
 func FromContext(ctx context.Context) *Helper {
 	if ctx != nil {
 		if log, ok := ctx.Value(loggerKey{}).(*Helper); ok && log != nil {
@@ -13,6 +14,7 @@ func FromContext(ctx context.Context) *Helper {
 	return NewHelper(Default())
 }
 
+// NewContext returns a child context carrying a borrowed logging helper.
 func NewContext(ctx context.Context, log *Helper) context.Context {
 	return context.WithValue(ctx, loggerKey{}, log)
 }

@@ -1,8 +1,7 @@
 package logger
 
-import "context"
-
 import (
+	"context"
 	"runtime"
 	"strings"
 	"testing"

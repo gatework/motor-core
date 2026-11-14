@@ -12,9 +12,11 @@ var (
 )
 
 // Source is the source from which config is loaded
+//
+//nolint:iface // Source is a public port consumed by loaders and implemented by source backends.
 type Source interface {
 	Read() (*ChangeSet, error)
-	Write(*ChangeSet) error
+	Write(change *ChangeSet) error
 	Watch() (Watcher, error)
 	String() string
 }

@@ -16,7 +16,7 @@ type loginReq struct {
 	Password string `json:"password" binding:"required"`
 }
 
-func newBindTestApi(body string) *API {
+func newBindTestAPI(body string) *API {
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(body))
@@ -30,7 +30,7 @@ func newBindTestApi(body string) *API {
 }
 
 func TestBindRejectsEmptyBodyWithRequiredFields(t *testing.T) {
-	e := newBindTestApi("")
+	e := newBindTestAPI("")
 
 	req := loginReq{}
 	err := e.Bind(&req)
@@ -42,7 +42,7 @@ func TestBindRejectsEmptyBodyWithRequiredFields(t *testing.T) {
 }
 
 func TestBindRejectsPartialBody(t *testing.T) {
-	e := newBindTestApi(`{"user":"admin"}`)
+	e := newBindTestAPI(`{"user":"admin"}`)
 
 	req := loginReq{}
 	if err := e.Bind(&req); err == nil {
@@ -52,7 +52,7 @@ func TestBindRejectsPartialBody(t *testing.T) {
 
 // Guards against the fix rejecting well-formed requests.
 func TestBindAcceptsCompleteBody(t *testing.T) {
-	e := newBindTestApi(`{"user":"admin","password":"secret"}`)
+	e := newBindTestAPI(`{"user":"admin","password":"secret"}`)
 
 	req := loginReq{}
 	if err := e.Bind(&req); err != nil {

@@ -1,3 +1,5 @@
+Engineering baseline: [go-standards/STANDARD.md v1.0.2](https://github.com/gatework/go-standards/blob/v1.0.2/STANDARD.md). See [adoption status](docs/standards.md) for outstanding migration gaps.
+
 # Contributing
 
 This project is consumed by several downstream applications and is moving
@@ -86,11 +88,9 @@ timeout per accessor; the deadlock it was written for hung thirteen of them.
 ## Before opening a pull request
 
 ```sh
-make ci        # build + vet + race-enabled tests
-make lint      # staticcheck
-make vuln      # govulncheck
+make check     # shared standards plus repository checks
 ```
 
-All must pass. If a test has to be excluded from `make test-race`, document it
+The unified gate must pass. `make ci` is an alias for `make check`. If a test has to be excluded from `make test-race`, document it
 in `docs/known-issues.md` with a reproduction command, an impact assessment and
 a plan — and skip it by test name, never by package.

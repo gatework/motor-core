@@ -1,10 +1,9 @@
 package logger
 
-import "fmt"
-import "context"
-
 import (
 	"bytes"
+	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -55,7 +54,7 @@ func TestSanitizer(t *testing.T) {
 	sanitizerLogger := NewSanitizerLogger(baseLogger, DefaultSanitizerConfig)
 
 	// 测试手机号脱敏
-	sanitizerLogger.With(FieldsFromMap(map[string]interface{}{
+	sanitizerLogger.With(FieldsFromMap(map[string]any{
 		"phone":    "13812345678",
 		"password": "secret123",
 		"token":    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
@@ -115,7 +114,7 @@ func TestAsyncPerformance(t *testing.T) {
 
 	// 同步日志
 	start := time.Now()
-	for i := 0; i < 10000; i++ {
+	for i := range 10000 {
 		baseLogger.Log(context.Background(), InfoLevel, fmt.Sprint("Sync log", i))
 	}
 	syncDuration := time.Since(start)
@@ -129,7 +128,7 @@ func TestAsyncPerformance(t *testing.T) {
 	})
 
 	start = time.Now()
-	for i := 0; i < 10000; i++ {
+	for i := range 10000 {
 		asyncLogger.Log(context.Background(), InfoLevel, fmt.Sprint("Async log", i))
 	}
 
@@ -178,7 +177,7 @@ func TestCombinedFeatures(t *testing.T) {
 
 	// 记录 50 条日志（包含敏感信息）
 	for i := 1; i <= 50; i++ {
-		logger.With(FieldsFromMap(map[string]interface{}{
+		logger.With(FieldsFromMap(map[string]any{
 			"phone":   "13812345678",
 			"user_id": i,
 		})...,
@@ -216,7 +215,7 @@ func BenchmarkSampling(b *testing.B) {
 	samplingLogger := NewSamplingLogger(baseLogger, DefaultSamplingConfig)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		samplingLogger.Log(context.Background(), InfoLevel, "Benchmark log")
 	}
 }
@@ -227,14 +226,14 @@ func BenchmarkSanitizer(b *testing.B) {
 	baseLogger := mustLogrus(WithOutput(buf), WithLevel(InfoLevel))
 	sanitizerLogger := NewSanitizerLogger(baseLogger, DefaultSanitizerConfig)
 
-	fields := map[string]interface{}{
+	fields := map[string]any{
 		"phone":    "13812345678",
 		"password": "secret123",
 		"user_id":  12345,
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		sanitizerLogger.With(FieldsFromMap(fields)...).Log(context.Background(), InfoLevel, "Benchmark log")
 	}
 }
@@ -246,7 +245,7 @@ func BenchmarkAsync(b *testing.B) {
 	asyncLogger := NewAsyncLogger(baseLogger, DefaultAsyncConfig)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		asyncLogger.Log(context.Background(), InfoLevel, "Benchmark log")
 	}
 

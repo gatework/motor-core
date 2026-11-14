@@ -7,10 +7,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/gatework/motor-core/logger"
-	"github.com/gatework/motor-core/storage"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+
+	"github.com/gatework/motor-core/logger"
+	"github.com/gatework/motor-core/storage"
 )
 
 // recordingLogger keeps every line so a test can assert on what was said.
@@ -108,7 +109,7 @@ func TestRunIsIdempotent(t *testing.T) {
 	app.SetBefore(func() { before++ })
 	app.SetAppRouters(func() { routers++ })
 
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		app.RunBefore()
 		app.RunAppRouters()
 	}

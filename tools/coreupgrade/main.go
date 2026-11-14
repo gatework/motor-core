@@ -9,6 +9,7 @@
 package main
 
 import (
+	"crypto/rand"
 	"flag"
 	"fmt"
 	"io"
@@ -64,68 +65,101 @@ func main() {
 	}
 }
 
-func run(dir string, write bool, dest destination, out io.Writer) (imports, files int, err error) {
-	err = filepath.WalkDir(dir, func(filePath string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			if skipDir(d.Name()) && filePath != dir {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		if d.Type()&fs.ModeSymlink != 0 || !strings.HasSuffix(filePath, ".go") {
-			return nil
-		}
+type migration struct {
+	root           *os.Root
+	write          bool
+	dest           destination
+	out            io.Writer
+	imports, files int
+}
 
-		src, err := os.ReadFile(filePath)
-		if err != nil {
-			return err
-		}
+func run(dir string, write bool, dest destination, out io.Writer) (int, int, error) {
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer root.Close()
+	m := &migration{root: root, write: write, dest: dest, out: out}
+	err = fs.WalkDir(root.FS(), ".", m.visit)
+	return m.imports, m.files, err
+}
 
-		next, changes, err := rewrite(filePath, src, dest)
-		if err != nil {
-			// A file that does not parse is reported and stepped over: the
-			// tool has no business deciding a consumer's build is broken.
-			fmt.Fprintln(os.Stderr, "coreupgrade: skipping", err)
-			return nil
+func (m *migration) visit(name string, entry fs.DirEntry, walkErr error) error {
+	if walkErr != nil {
+		return walkErr
+	}
+	if entry.IsDir() {
+		if name != "." && skipDir(entry.Name()) {
+			return fs.SkipDir
 		}
-		if len(changes) == 0 {
-			return nil
-		}
-
-		rel, relErr := filepath.Rel(dir, filePath)
-		if relErr != nil {
-			rel = filePath
-		}
-		for _, c := range changes {
-			note := ""
-			if c.Aliased {
-				note = fmt.Sprintf(" (kept the local name %q; the package is now %q)",
-					packageName(c.From), packageName(c.To))
-			}
-			fmt.Fprintf(out, "%s:%d: %s -> %s%s\n", rel, c.Line, c.From, c.To, note)
-		}
-
-		if write {
-			// The consumer's permission bits are theirs. A migration that
-			// quietly turns 0600 into 0644 is the kind of change nobody
-			// thinks to look for.
-			mode := fs.FileMode(0o644)
-			if info, err := d.Info(); err == nil {
-				mode = info.Mode().Perm()
-			}
-			if err := os.WriteFile(filePath, next, mode); err != nil {
-				return err
-			}
-		}
-
-		imports += len(changes)
-		files++
 		return nil
-	})
-	return imports, files, err
+	}
+	if !entry.Type().IsRegular() || !strings.HasSuffix(name, ".go") {
+		return nil
+	}
+	source, err := m.root.ReadFile(name)
+	if err != nil {
+		return err
+	}
+	next, changes, err := rewrite(name, source, m.dest)
+	if err != nil {
+		// Parse failures are reported without deciding the consumer's build policy.
+		fmt.Fprintln(os.Stderr, "coreupgrade: skipping", err)
+		return nil
+	}
+	if len(changes) == 0 {
+		return nil
+	}
+	m.report(name, changes)
+	if m.write {
+		if err := m.writeFile(name, next); err != nil {
+			return err
+		}
+	}
+	m.imports += len(changes)
+	m.files++
+	return nil
+}
+
+func (m *migration) report(name string, changes []change) {
+	for _, change := range changes {
+		note := ""
+		if change.Aliased {
+			note = fmt.Sprintf(" (kept the local name %q; the package is now %q)", packageName(change.From), packageName(change.To))
+		}
+		fmt.Fprintf(m.out, "%s:%d: %s -> %s%s\n", name, change.Line, change.From, change.To, note)
+	}
+}
+
+func (m *migration) writeFile(name string, content []byte) error {
+	info, err := m.root.Stat(name)
+	if err != nil {
+		return err
+	}
+	// Both reads and replacement stay within the selected consumer directory.
+	// A symlink swap cannot redirect the migration outside that root.
+	temporary := filepath.Join(filepath.Dir(name), ".coreupgrade-"+rand.Text())
+	file, err := m.root.OpenFile(temporary, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = m.root.Remove(temporary) }()
+	if _, err := file.Write(content); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Chmod(info.Mode().Perm()); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	return m.root.Rename(temporary, name)
 }
 
 func skipDir(name string) bool {

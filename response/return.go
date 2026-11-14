@@ -8,6 +8,7 @@ import (
 	"github.com/gatework/motor-core/sdk/pkg"
 )
 
+// Default is the response prototype copied by the package helpers.
 var Default = &response{}
 
 // Error 失败数据处理
@@ -19,7 +20,7 @@ func Error(c *gin.Context, code int, err error, msg string) {
 	if msg != "" {
 		res.SetMsg(msg)
 	}
-	res.SetTraceID(pkg.GenerateMsgIDFromContext(c))
+	res.SetTraceID(pkg.RequestID(c))
 	res.SetCode(int32(code))
 	res.SetSuccess(false)
 	c.Set("result", res)
@@ -28,14 +29,14 @@ func Error(c *gin.Context, code int, err error, msg string) {
 }
 
 // OK 通常成功数据处理
-func OK(c *gin.Context, data interface{}, msg string) {
+func OK(c *gin.Context, data any, msg string) {
 	res := Default.Clone()
 	res.SetData(data)
 	res.SetSuccess(true)
 	if msg != "" {
 		res.SetMsg(msg)
 	}
-	res.SetTraceID(pkg.GenerateMsgIDFromContext(c))
+	res.SetTraceID(pkg.RequestID(c))
 	res.SetCode(http.StatusOK)
 	c.Set("result", res)
 	c.Set("status", http.StatusOK)
@@ -43,7 +44,7 @@ func OK(c *gin.Context, data interface{}, msg string) {
 }
 
 // PageOK 分页数据处理
-func PageOK(c *gin.Context, result interface{}, count int, pageIndex int, pageSize int, msg string) {
+func PageOK(c *gin.Context, result any, count int, pageIndex int, pageSize int, msg string) {
 	var res page
 	res.List = result
 	res.Count = count
@@ -52,9 +53,9 @@ func PageOK(c *gin.Context, result interface{}, count int, pageIndex int, pageSi
 	OK(c, res, msg)
 }
 
-// Custum 兼容函数
+// Custom writes a custom response map with its request ID.
 func Custom(c *gin.Context, data gin.H) {
-	data["requestId"] = pkg.GenerateMsgIDFromContext(c)
+	data["requestId"] = pkg.RequestID(c)
 	c.Set("result", data)
 	c.AbortWithStatusJSON(http.StatusOK, data)
 }

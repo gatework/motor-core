@@ -1,12 +1,15 @@
+// Package flag loads configuration from command-line flags.
 package flag
 
 import (
-	"dario.cat/mergo"
 	"errors"
 	"flag"
-	"github.com/gatework/motor-core/config/source"
 	"strings"
 	"time"
+
+	"dario.cat/mergo"
+
+	"github.com/gatework/motor-core/config/source"
 )
 
 type flagsrc struct {
@@ -18,28 +21,27 @@ func (fs *flagsrc) Read() (*source.ChangeSet, error) {
 		return nil, errors.New("flags not parsed")
 	}
 
-	var changes map[string]interface{}
+	var changes map[string]any
 
 	visitFn := func(f *flag.Flag) {
 		n := strings.ToLower(f.Name)
 		keys := strings.FieldsFunc(n, split)
 		reverse(keys)
 
-		tmp := make(map[string]interface{})
+		tmp := make(map[string]any)
 		for i, k := range keys {
 			if i == 0 {
 				tmp[k] = f.Value
 				continue
 			}
 
-			tmp = map[string]interface{}{k: tmp}
+			tmp = map[string]any{k: tmp}
 		}
 
 		_ = mergo.Map(&changes, tmp) // need to sort error handling
 	}
 
-	unset, ok := fs.opts.Context.Value(includeUnsetKey{}).(bool)
-	if ok && unset {
+	if fs.opts.IncludeUnset {
 		flag.VisitAll(visitFn)
 	} else {
 		flag.Visit(visitFn)

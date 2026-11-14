@@ -1,9 +1,11 @@
 package antd
 
 import (
-	"github.com/gin-gonic/gin"
-	"github.com/gatework/motor-core/sdk/pkg"
 	"net/http"
+
+	"github.com/gin-gonic/gin"
+
+	"github.com/gatework/motor-core/sdk/pkg"
 )
 
 // Error 失败数据处理
@@ -16,7 +18,7 @@ func Error(c *gin.Context, errCode string, errMsg string, showType string) {
 	if showType != "" {
 		res.ShowType = showType
 	}
-	res.TraceId = pkg.GenerateMsgIDFromContext(c)
+	res.TraceID = pkg.RequestID(c)
 	res.ErrorCode = errCode
 	c.Set("result", res)
 	c.Set("status", errCode)
@@ -24,50 +26,52 @@ func Error(c *gin.Context, errCode string, errMsg string, showType string) {
 }
 
 // OK 通常成功数据处理
-func OK(c *gin.Context, data interface{}) {
+func OK(c *gin.Context, data any) {
 	var res response
 	res.Data = data
 	res.Success = true
 	res.Status = "done"
-	res.TraceId = pkg.GenerateMsgIDFromContext(c)
+	res.TraceID = pkg.RequestID(c)
 	c.Set("result", res)
 	c.Set("status", http.StatusOK)
 	c.AbortWithStatusJSON(http.StatusOK, res)
 }
 
-func UpFileOK(c *gin.Context, data interface{}) {
+// UpFileOK writes a successful file-upload response.
+func UpFileOK(c *gin.Context, data any) {
 	var res response
 	res.Data = data
 	res.Success = true
 	res.Status = "done"
-	res.TraceId = pkg.GenerateMsgIDFromContext(c)
+	res.TraceID = pkg.RequestID(c)
 	c.Set("result", res)
 	c.Set("status", http.StatusOK)
 	c.AbortWithStatusJSON(http.StatusOK, res)
 }
 
 // PageOK 分页数据处理
-func PageOK(c *gin.Context, result interface{}, total int, current int, pageSize int) {
+func PageOK(c *gin.Context, result any, total int, current int, pageSize int) {
 	var res pages
 	res.Data = result
 	res.Total = total
 	res.Current = current
 	res.PageSize = pageSize
 	res.Success = true
-	res.TraceId = pkg.GenerateMsgIDFromContext(c)
+	res.TraceID = pkg.RequestID(c)
 	c.Set("result", res)
 	c.Set("status", http.StatusOK)
 	c.AbortWithStatusJSON(http.StatusOK, res)
 }
 
-func ListOK(c *gin.Context, result interface{}, total int, current int, pageSize int) {
+// ListOK writes a successful item-list response.
+func ListOK(c *gin.Context, result any, total int, current int, pageSize int) {
 	var res lists
 	res.ListData.List = result
 	res.ListData.Total = total
 	res.ListData.Current = current
 	res.ListData.PageSize = pageSize
 	res.Success = true
-	res.TraceId = pkg.GenerateMsgIDFromContext(c)
+	res.TraceID = pkg.RequestID(c)
 	c.Set("result", res)
 	c.Set("status", http.StatusOK)
 	c.AbortWithStatusJSON(http.StatusOK, res)
@@ -75,7 +79,7 @@ func ListOK(c *gin.Context, result interface{}, total int, current int, pageSize
 
 // Custum 兼容函数
 func Custum(c *gin.Context, data gin.H) {
-	data["traceId"] = pkg.GenerateMsgIDFromContext(c)
+	data["traceId"] = pkg.RequestID(c)
 	c.Set("result", data)
 	c.AbortWithStatusJSON(http.StatusOK, data)
 }

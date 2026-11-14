@@ -6,7 +6,9 @@ import (
 	resp "github.com/gatework/motor-core/response"
 )
 
+// Client error-display modes understood by Ant Design Pro.
 const (
+	// Silent suppresses the client error notification.
 	Silent       = "0"
 	MessageWarn  = "1"
 	MessageError = "2"
@@ -14,43 +16,47 @@ const (
 	Page         = "9"
 )
 
+// Response describes the HTTP response envelope.
 type Response struct {
 	Success      bool   `json:"success,omitempty"`      // if request is success
 	ErrorCode    string `json:"errorCode,omitempty"`    // code for errorType
 	ErrorMessage string `json:"errorMessage,omitempty"` // message display to user
 	ShowType     string `json:"showType,omitempty"`     // error display type： 0 silent; 1 message.warn; 2 message.error; 4 notification; 9 page
-	TraceId      string `json:"traceId,omitempty"`      // Convenient for back-end Troubleshooting: unique request ID
+	TraceID      string `json:"traceId,omitempty"`      // Convenient for back-end Troubleshooting: unique request ID
 	Host         string `json:"host,omitempty"`         // onvenient for backend Troubleshooting: host of current access server
 	Status       string `json:"status,omitempty"`
 }
 type response struct {
 	Response
-	Data interface{} `json:"data,omitempty"` // response data
+	Data any `json:"data,omitempty"` // response data
 }
 
+// Pages describes a page of response items.
 type Pages struct {
 	Response
-	Data     interface{} `json:"data,omitempty"` // response data
-	Total    int         `json:"total,omitempty"`
-	Current  int         `json:"current,omitempty"`
-	PageSize int         `json:"pageSize,omitempty"`
+	Data     any `json:"data,omitempty"` // response data
+	Total    int `json:"total,omitempty"`
+	Current  int `json:"current,omitempty"`
+	PageSize int `json:"pageSize,omitempty"`
 }
 
 type pages struct {
 	Pages
-	Data interface{} `json:"data,omitempty"`
+	Data any `json:"data,omitempty"`
 }
 
 type lists struct {
 	Response
-	ListData ListData `json:"data,omitempty"` // response data
+	// ListData describes an unpaged item list.
+	ListData ListData `json:"data"` // response data
 }
 
+// ListData describes an unpaged list and its optional counts.
 type ListData struct {
-	List     interface{} `json:"list,omitempty"` // response data
-	Total    int         `json:"total,omitempty"`
-	Current  int         `json:"current,omitempty"`
-	PageSize int         `json:"pageSize,omitempty"`
+	List     any `json:"list,omitempty"` // response data
+	Total    int `json:"total,omitempty"`
+	Current  int `json:"current,omitempty"`
+	PageSize int `json:"pageSize,omitempty"`
 }
 
 func (e *response) SetCode(code int32) {
@@ -62,14 +68,14 @@ func (e *response) SetCode(code int32) {
 }
 
 func (e *response) SetTraceID(id string) {
-	e.TraceId = id
+	e.TraceID = id
 }
 
 func (e *response) SetMsg(msg string) {
 	e.ErrorMessage = msg
 }
 
-func (e *response) SetData(data interface{}) {
+func (e *response) SetData(data any) {
 	e.Data = data
 }
 
@@ -77,6 +83,7 @@ func (e *response) SetSuccess(success bool) {
 	e.Success = success
 }
 
-func (e response) Clone() resp.Responses {
-	return &e
+func (e *response) Clone() resp.Responses {
+	clone := *e
+	return &clone
 }

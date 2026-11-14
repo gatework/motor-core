@@ -14,6 +14,7 @@ type file struct {
 }
 
 var (
+	// DefaultPath is the configuration file used when no path is supplied.
 	DefaultPath = "config.json"
 )
 
@@ -58,12 +59,12 @@ func (f *file) Write(cs *source.ChangeSet) error {
 	return nil
 }
 
+// NewSource constructs a file-backed configuration source.
 func NewSource(opts ...source.Option) source.Source {
 	options := source.NewOptions(opts...)
 	path := DefaultPath
-	f, ok := options.Context.Value(filePathKey{}).(string)
-	if ok {
-		path = f
+	if options.FilePath != "" {
+		path = options.FilePath
 	}
 	return &file{opts: options, path: path}
 }

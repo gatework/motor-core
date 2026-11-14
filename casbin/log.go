@@ -43,6 +43,7 @@ func (l *Logger) LogModel(model [][]string) {
 	logger.Default().Log(context.Background(), logger.InfoLevel, message.String())
 }
 
+// LogEnforce records a policy decision when enforcement logging is enabled.
 func (l *Logger) LogEnforce(matcher string, request []any, result bool, explains [][]string) {
 	if !l.IsEnabled() {
 		return
@@ -54,6 +55,7 @@ func (l *Logger) LogEnforce(matcher string, request []any, result bool, explains
 	)
 }
 
+// LogRole records a role relationship when enforcement logging is enabled.
 func (l *Logger) LogRole(roles []string) {
 	if !l.IsEnabled() {
 		return
@@ -61,6 +63,7 @@ func (l *Logger) LogRole(roles []string) {
 	logger.Default().Log(context.Background(), logger.InfoLevel, "", logger.Any("roles", roles))
 }
 
+// LogPolicy records configured policies when enforcement logging is enabled.
 func (l *Logger) LogPolicy(policy map[string][][]string) {
 	if !l.IsEnabled() {
 		return

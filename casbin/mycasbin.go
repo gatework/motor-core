@@ -8,8 +8,9 @@ import (
 	"github.com/casbin/casbin/v3/model"
 	"github.com/casbin/casbin/v3/persist"
 	gormAdapter "github.com/casbin/gorm-adapter/v3"
-	"github.com/gatework/motor-core/logger"
 	"gorm.io/gorm"
+
+	"github.com/gatework/motor-core/logger"
 )
 
 // Initialize the model from a string.

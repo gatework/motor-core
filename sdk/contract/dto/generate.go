@@ -1,123 +1,75 @@
 package dto
 
 import (
-	"net/http"
+	"slices"
 
-	vd "github.com/bytedance/go-tagexpr/v2/validator"
 	"github.com/gin-gonic/gin"
 
 	"github.com/gatework/motor-core/sdk/api"
 )
 
-// ObjectById binds either a single :id from the URI or, on DELETE, a JSON
-// body carrying ids for a batch delete.
-type ObjectById struct {
-	Id  int   `uri:"id"`
-	Ids []int `json:"ids"`
+// ObjectByID addresses a single URI ID and an optional JSON batch.
+type ObjectByID struct {
+	ID  int   `uri:"id"`
+	IDs []int `json:"ids"`
 }
 
-func (s *ObjectById) Bind(ctx *gin.Context) error {
-	var err error
-	log := api.GetRequestLogger(ctx)
-	err = ctx.ShouldBindUri(s)
+// Bind decodes and validates the request into the receiver.
+func (s *ObjectByID) Bind(ctx *gin.Context) error {
+	request, err := api.New(ctx, api.Dependencies{})
 	if err != nil {
-		log.Warnf("ShouldBindUri error: %s", err.Error())
 		return err
 	}
-	if ctx.Request.Method == http.MethodDelete {
-		err = ctx.ShouldBind(s)
-		if err != nil {
-			log.Warnf("ShouldBind error: %s", err.Error())
-			return err
-		}
-		if len(s.Ids) > 0 {
-			return nil
-		}
-		if s.Ids == nil {
-			s.Ids = make([]int, 0)
-		}
-		if s.Id != 0 {
-			s.Ids = append(s.Ids, s.Id)
-		}
-	}
-	if err = vd.Validate(s); err != nil {
-		log.Errorf("Validate error: %s", err.Error())
-		return err
-	}
-	return err
+	return request.Bind(s)
 }
 
-// GetId returns the ids this request addresses: the batch from the body when
-// there is one, otherwise the single id from the URI.
-//
-// It must not write back to the receiver. Appending to s.Ids in place made
-// GetId non-idempotent - a second call returned the URI id twice - and an
-// unconditional append put a 0 into the slice on any route that carries no
-// :id, which is a dangerous value to hand to a caller that treats 0 as a
-// sentinel.
-func (s *ObjectById) GetId() interface{} {
-	if len(s.Ids) == 0 {
-		return s.Id
+// GetID returns the selected resource identity.
+func (s *ObjectByID) GetID() any {
+	if len(s.IDs) == 0 {
+		return s.ID
 	}
-	if s.Id == 0 {
-		return s.Ids
+	if s.ID == 0 {
+		return slices.Clone(s.IDs)
 	}
-	ids := make([]int, 0, len(s.Ids)+1)
-	ids = append(ids, s.Ids...)
-	return append(ids, s.Id)
+	ids := make([]int, 0, len(s.IDs)+1)
+	ids = append(ids, s.IDs...)
+	return append(ids, s.ID)
 }
 
-// ObjectGetReq binds a single :id from the URI for a detail lookup.
+// ObjectGetReq addresses a single URI ID.
 type ObjectGetReq struct {
-	Id int `uri:"id"`
+	ID int `uri:"id"`
 }
 
+// Bind decodes and validates the URI parameters.
 func (s *ObjectGetReq) Bind(ctx *gin.Context) error {
-	var err error
-	log := api.GetRequestLogger(ctx)
-	err = ctx.ShouldBindUri(s)
+	request, err := api.New(ctx, api.Dependencies{})
 	if err != nil {
-		log.Warnf("ShouldBindUri error: %s", err.Error())
 		return err
 	}
-	if err = vd.Validate(s); err != nil {
-		log.Errorf("Validate error: %s", err.Error())
-		return err
-	}
-	return err
+	return request.Bind(s)
 }
 
-func (s *ObjectGetReq) GetId() interface{} {
-	return s.Id
+// GetID returns the resource identity.
+func (s *ObjectGetReq) GetID() any {
+	return s.ID
 }
 
-// ObjectDeleteReq binds a JSON body of ids for a batch delete.
+// ObjectDeleteReq addresses a JSON batch of IDs.
 type ObjectDeleteReq struct {
-	Ids []int `json:"ids"`
+	IDs []int `json:"ids"`
 }
 
+// Bind decodes and validates the deletion request body.
 func (s *ObjectDeleteReq) Bind(ctx *gin.Context) error {
-	var err error
-	log := api.GetRequestLogger(ctx)
-	err = ctx.ShouldBind(s)
+	request, err := api.New(ctx, api.Dependencies{})
 	if err != nil {
-		log.Warnf("ShouldBind error: %s", err.Error())
 		return err
 	}
-	if len(s.Ids) > 0 {
-		return nil
-	}
-	if s.Ids == nil {
-		s.Ids = make([]int, 0)
-	}
-
-	if err = vd.Validate(s); err != nil {
-		log.Errorf("Validate error: %s", err.Error())
-		return err
-	}
-	return err
+	return request.Bind(s)
 }
 
-func (s *ObjectDeleteReq) GetId() interface{} {
-	return s.Ids
+// GetID returns a copy of the selected resource identities.
+func (s *ObjectDeleteReq) GetID() any {
+	return slices.Clone(s.IDs)
 }

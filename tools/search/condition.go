@@ -11,9 +11,11 @@ type Condition struct {
 	Where []Clause
 	Or    []Clause
 	Order []string
-	Join  []Join
+	// Join pairs a join clause with the filters resolved for that join.
+	Join []Join
 }
 
+// Join associates a SQL join with its resolved predicates.
 type Join struct {
 	SQL       string
 	Condition Condition

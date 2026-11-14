@@ -40,3 +40,11 @@ RELEASE_NOTES.md
 
 # go build ./... drops the coreupgrade binary at the root
 /coreupgrade
+
+# Temporary cross-module integration workspace
+go.work
+go.work.sum
+
+# CI release artifacts
+/dist/
+__pycache__/

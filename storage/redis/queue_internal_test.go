@@ -11,33 +11,33 @@ import (
 func TestDecodeValues(t *testing.T) {
 	cases := []struct {
 		name string
-		in   map[string]interface{}
-		want map[string]interface{}
+		in   map[string]any
+		want map[string]any
 	}{
 		{
 			name: "json values are decoded",
-			in:   map[string]interface{}{"id": `"42"`, "count": "7", "ok": "true"},
-			want: map[string]interface{}{"id": "42", "count": float64(7), "ok": true},
+			in:   map[string]any{"id": `"42"`, "count": "7", "ok": "true"},
+			want: map[string]any{"id": "42", "count": float64(7), "ok": true},
 		},
 		{
 			name: "a string that is not json is passed through",
-			in:   map[string]interface{}{"raw": "not json at all"},
-			want: map[string]interface{}{"raw": "not json at all"},
+			in:   map[string]any{"raw": "not json at all"},
+			want: map[string]any{"raw": "not json at all"},
 		},
 		{
 			name: "a value that is not a string is passed through untouched",
-			in:   map[string]interface{}{"weird": 42},
-			want: map[string]interface{}{"weird": 42},
+			in:   map[string]any{"weird": 42},
+			want: map[string]any{"weird": 42},
 		},
 		{
 			name: "the empty marker yields an empty payload",
-			in:   map[string]interface{}{emptyField: ""},
-			want: map[string]interface{}{},
+			in:   map[string]any{emptyField: ""},
+			want: map[string]any{},
 		},
 		{
 			name: "a caller's field of the marker's name survives",
-			in:   map[string]interface{}{emptyField: `"mine"`},
-			want: map[string]interface{}{emptyField: "mine"},
+			in:   map[string]any{emptyField: `"mine"`},
+			want: map[string]any{emptyField: "mine"},
 		},
 	}
 
@@ -67,7 +67,7 @@ func TestEncodeValues(t *testing.T) {
 		t.Errorf("an empty payload must carry the marker alone, got %#v", out)
 	}
 
-	out, err = encodeValues(map[string]interface{}{"id": "42"})
+	out, err = encodeValues(map[string]any{"id": "42"})
 	if err != nil {
 		t.Fatalf("encode: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestEncodeValues(t *testing.T) {
 		t.Errorf("values travel as JSON, got %#v", out["id"])
 	}
 
-	if _, err := encodeValues(map[string]interface{}{"ch": make(chan int)}); err == nil {
+	if _, err := encodeValues(map[string]any{"ch": make(chan int)}); err == nil {
 		t.Error("a value with no JSON form must be rejected at publish time")
 	}
 }

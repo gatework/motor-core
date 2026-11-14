@@ -26,49 +26,50 @@ type benchSearchDTO struct {
 	Phone     string    `search:"type:exact;column:phone;table:sys_user"`
 	Email     string    `search:"type:exact;column:email;table:sys_user"`
 	Status    string    `search:"type:exact;column:status;table:sys_user"`
-	DeptId    string    `search:"type:exact;column:dept_id;table:sys_user"`
-	RoleId    string    `search:"type:exact;column:role_id;table:sys_user"`
+	DeptID    string    `search:"type:exact;column:dept_id;table:sys_user"`
+	RoleID    string    `search:"type:exact;column:role_id;table:sys_user"`
 	BeginTime time.Time `search:"type:gte;column:created_at;table:sys_user"`
 	EndTime   time.Time `search:"type:lte;column:created_at;table:sys_user"`
 	Order     string    `search:"type:order;column:created_at;table:sys_user"`
 	Ignored   string    `search:"-"`
 }
 
-func benchResolve(b *testing.B, q interface{}) {
+func benchResolve(b *testing.B, q any) {
+	b.Helper()
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_, _ = Resolve(MySQL, q)
 	}
 }
 
 // BenchmarkResolveEmpty is a list page opened with no filters.
 func BenchmarkResolveEmpty(b *testing.B) {
-	benchResolve(b, benchSearchDTO{BenchPagination: BenchPagination{PageIndex: 1, PageSize: 10}})
+	benchResolve(b, benchSearchDTO{PageIndex: 1, PageSize: 10})
 }
 
 // BenchmarkResolveTypical is a search with two filters filled in.
 func BenchmarkResolveTypical(b *testing.B) {
 	benchResolve(b, benchSearchDTO{
-		BenchPagination: BenchPagination{PageIndex: 1, PageSize: 10},
-		Username:        "admin",
-		Status:          "2",
+		PageIndex: 1, PageSize: 10,
+		Username: "admin",
+		Status:   "2",
 	})
 }
 
 // BenchmarkResolveFull fills everything, which is the upper bound.
 func BenchmarkResolveFull(b *testing.B) {
 	benchResolve(b, benchSearchDTO{
-		BenchPagination: BenchPagination{PageIndex: 1, PageSize: 10},
-		Username:        "admin",
-		NickName:        "administrator",
-		Phone:           "13800000000",
-		Email:           "a@b.c",
-		Status:          "2",
-		DeptId:          "1",
-		RoleId:          "1",
-		BeginTime:       time.Now().Add(-24 * time.Hour),
-		EndTime:         time.Now(),
-		Order:           "desc",
+		PageIndex: 1, PageSize: 10,
+		Username:  "admin",
+		NickName:  "administrator",
+		Phone:     "13800000000",
+		Email:     "a@b.c",
+		Status:    "2",
+		DeptID:    "1",
+		RoleID:    "1",
+		BeginTime: time.Now().Add(-24 * time.Hour),
+		EndTime:   time.Now(),
+		Order:     "desc",
 	})
 }

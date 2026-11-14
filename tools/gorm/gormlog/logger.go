@@ -56,17 +56,6 @@ type gormLogger struct {
 	traceStr, traceErrStr, traceWarnStr string
 }
 
-func (l *gormLogger) getLogger(ctx context.Context) loggerCore.Logger {
-	if ctx == nil {
-		return loggerCore.Default()
-	}
-	requestId := ctx.Value("X-Request-Id")
-	if requestId != nil {
-		return loggerCore.Default().With(loggerCore.Any("x-request-id", requestId))
-	}
-	return loggerCore.Default()
-}
-
 // LogMode log mode
 func (l *gormLogger) LogMode(level logger.LogLevel) logger.Interface {
 	newLogger := *l
@@ -75,31 +64,31 @@ func (l *gormLogger) LogMode(level logger.LogLevel) logger.Interface {
 }
 
 // Info print info
-func (l gormLogger) Info(ctx context.Context, msg string, data ...interface{}) {
+func (l *gormLogger) Info(ctx context.Context, msg string, data ...any) {
 	if l.LogLevel >= logger.Info {
 		log := l.getLogger(ctx)
-		log.Log(ctx, loggerCore.InfoLevel, fmt.Sprintf(l.infoStr+msg, append([]interface{}{fileWithLineNum()}, data...)...))
+		log.Log(ctx, loggerCore.InfoLevel, fmt.Sprintf(l.infoStr+msg, append([]any{fileWithLineNum()}, data...)...))
 	}
 }
 
 // Warn print warn messages
-func (l gormLogger) Warn(ctx context.Context, msg string, data ...interface{}) {
+func (l *gormLogger) Warn(ctx context.Context, msg string, data ...any) {
 	if l.LogLevel >= logger.Warn {
 		log := l.getLogger(ctx)
-		log.Log(ctx, loggerCore.WarnLevel, fmt.Sprintf(l.warnStr+msg, append([]interface{}{fileWithLineNum()}, data...)...))
+		log.Log(ctx, loggerCore.WarnLevel, fmt.Sprintf(l.warnStr+msg, append([]any{fileWithLineNum()}, data...)...))
 	}
 }
 
 // Error print error messages
-func (l gormLogger) Error(ctx context.Context, msg string, data ...interface{}) {
+func (l *gormLogger) Error(ctx context.Context, msg string, data ...any) {
 	if l.LogLevel >= logger.Error {
 		log := l.getLogger(ctx)
-		log.Log(ctx, loggerCore.ErrorLevel, fmt.Sprintf(l.errStr+msg, append([]interface{}{fileWithLineNum()}, data...)...))
+		log.Log(ctx, loggerCore.ErrorLevel, fmt.Sprintf(l.errStr+msg, append([]any{fileWithLineNum()}, data...)...))
 	}
 }
 
 // Trace print sql message
-func (l gormLogger) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
+func (l *gormLogger) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
 	if l.LogLevel > logger.Silent {
 		log := l.getLogger(ctx)
 		elapsed := time.Since(begin)
@@ -131,6 +120,7 @@ func (l gormLogger) Trace(ctx context.Context, begin time.Time, fc func() (strin
 	}
 }
 
+// New constructs a GORM logger adapter.
 func New(config logger.Config) logger.Interface {
 	var (
 		infoStr      = "%s\n[info] "
@@ -159,4 +149,15 @@ func New(config logger.Config) logger.Interface {
 		traceWarnStr: traceWarnStr,
 		traceErrStr:  traceErrStr,
 	}
+}
+
+func (l *gormLogger) getLogger(ctx context.Context) loggerCore.Logger {
+	if ctx == nil {
+		return loggerCore.Default()
+	}
+	requestID := ctx.Value("X-Request-Id")
+	if requestID != nil {
+		return loggerCore.Default().With(loggerCore.Any("x-request-id", requestID))
+	}
+	return loggerCore.Default()
 }

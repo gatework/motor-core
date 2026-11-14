@@ -74,10 +74,14 @@ func TestParseTokenWithMalformedLookup(t *testing.T) {
 // A foreign value stored under JwtPayloadKey must not crash extraction.
 func TestExtractClaimsWithForeignPayload(t *testing.T) {
 	c := newTestContext(http.MethodGet, "/")
-	c.Set(JwtPayloadKey, map[string]interface{}{"user": "admin"})
+	c.Set(JwtPayloadKey, map[string]any{"user": "admin"})
 
 	if got := ExtractClaims(c); len(got) != 0 {
 		t.Errorf("want empty claims for a foreign payload, got %v", got)
+	}
+	c.Set("JWT_TOKEN", 42)
+	if got := GetToken(c); got != "" {
+		t.Errorf("want an empty token for a foreign context value, got %q", got)
 	}
 }
 

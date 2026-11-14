@@ -1,3 +1,4 @@
+// Package json decodes configuration values into independent JSON trees.
 package json
 
 import (
@@ -5,6 +6,7 @@ import (
 	"time"
 
 	"dario.cat/mergo"
+
 	"github.com/gatework/motor-core/config/encoder"
 	"github.com/gatework/motor-core/config/encoder/json"
 	"github.com/gatework/motor-core/config/reader"
@@ -17,7 +19,7 @@ type jsonReader struct {
 }
 
 func (j *jsonReader) Merge(changes ...*source.ChangeSet) (*source.ChangeSet, error) {
-	var merged map[string]interface{}
+	var merged map[string]any
 
 	for _, m := range changes {
 		if m == nil {
@@ -34,7 +36,7 @@ func (j *jsonReader) Merge(changes ...*source.ChangeSet) (*source.ChangeSet, err
 			codec = j.json
 		}
 
-		var data map[string]interface{}
+		var data map[string]any
 		if err := codec.Decode(m.Data, &data); err != nil {
 			return nil, err
 		}

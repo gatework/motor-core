@@ -1,3 +1,4 @@
+// Package env loads configuration from environment variables.
 package env
 
 import (
@@ -7,10 +8,12 @@ import (
 	"time"
 
 	"dario.cat/mergo"
+
 	"github.com/gatework/motor-core/config/source"
 )
 
 var (
+	// DefaultPrefixes lists environment prefixes considered when none are supplied.
 	DefaultPrefixes = []string{}
 )
 
@@ -21,7 +24,7 @@ type env struct {
 }
 
 func (e *env) Read() (*source.ChangeSet, error) {
-	var changes map[string]interface{}
+	var changes map[string]any
 
 	for _, env := range os.Environ() {
 		env = e.processEnv(env)
@@ -34,7 +37,7 @@ func (e *env) Read() (*source.ChangeSet, error) {
 		keys := strings.Split(strings.ToLower(pair[0]), "_")
 		reverse(keys)
 
-		tmp := make(map[string]interface{})
+		tmp := make(map[string]any)
 		for i, k := range keys {
 			if i == 0 {
 				if intValue, err := strconv.Atoi(value); err == nil {
@@ -47,7 +50,7 @@ func (e *env) Read() (*source.ChangeSet, error) {
 				continue
 			}
 
-			tmp = map[string]interface{}{k: tmp}
+			tmp = map[string]any{k: tmp}
 		}
 
 		if err := mergo.Map(&changes, tmp); err != nil {
@@ -69,26 +72,6 @@ func (e *env) Read() (*source.ChangeSet, error) {
 	cs.Checksum = cs.Sum()
 
 	return cs, nil
-}
-
-func (e *env) processEnv(env string) string {
-	if len(e.prefixes) > 0 || len(e.strippedPrefixes) > 0 {
-		notFound := true
-
-		if _, ok := matchPrefix(e.prefixes, env); ok {
-			notFound = false
-		}
-
-		if match, ok := matchPrefix(e.strippedPrefixes, env); ok {
-			env = strings.TrimPrefix(env, match)
-			notFound = false
-		}
-
-		if notFound {
-			return ""
-		}
-	}
-	return env
 }
 
 func matchPrefix(pre []string, s string) (string, bool) {
@@ -137,18 +120,31 @@ func (e *env) String() string {
 func NewSource(opts ...source.Option) source.Source {
 	options := source.NewOptions(opts...)
 
-	var sp []string
-	var pre []string
-	if p, ok := options.Context.Value(strippedPrefixKey{}).([]string); ok {
-		sp = p
-	}
-
-	if p, ok := options.Context.Value(prefixKey{}).([]string); ok {
-		pre = p
-	}
+	sp := options.StrippedPrefixes
+	pre := options.Prefixes
 
 	if len(sp) > 0 || len(pre) > 0 {
 		pre = append(pre, DefaultPrefixes...)
 	}
 	return &env{prefixes: pre, strippedPrefixes: sp, opts: options}
+}
+
+func (e *env) processEnv(env string) string {
+	if len(e.prefixes) > 0 || len(e.strippedPrefixes) > 0 {
+		notFound := true
+
+		if _, ok := matchPrefix(e.prefixes, env); ok {
+			notFound = false
+		}
+
+		if match, ok := matchPrefix(e.strippedPrefixes, env); ok {
+			env = strings.TrimPrefix(env, match)
+			notFound = false
+		}
+
+		if notFound {
+			return ""
+		}
+	}
+	return env
 }

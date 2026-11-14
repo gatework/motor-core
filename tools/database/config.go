@@ -7,6 +7,7 @@ import (
 	"gorm.io/plugin/dbresolver"
 )
 
+// DBConfig configures a GORM connection pool and its read/write resolvers.
 type DBConfig struct {
 	dsn             string
 	connMaxIdleTime int
@@ -23,7 +24,7 @@ func NewConfigure(
 	maxOpenConns,
 	connMaxIdleTime,
 	connMaxLifetime int,
-	registers []ResolverConfigure) Configure {
+	registers []ResolverConfigure) *DBConfig {
 	return &DBConfig{
 		dsn:             dsn,
 		connMaxIdleTime: connMaxIdleTime,
@@ -34,7 +35,7 @@ func NewConfigure(
 	}
 }
 
-// Init 获取db，⚠️注意：读写分离只能配置一组
+// Init opens and configures the database resources.
 func (e *DBConfig) Init(config *gorm.Config, open func(string) gorm.Dialector) (*gorm.DB, error) {
 	db, err := gorm.Open(open(e.dsn), config)
 	if err != nil {
@@ -65,16 +66,17 @@ func (e *DBConfig) Init(config *gorm.Config, open func(string) gorm.Dialector) (
 	return db, err
 }
 
+// DBResolverConfig configures source and replica routing.
 type DBResolverConfig struct {
 	sources  []string
 	replicas []string
 	policy   string
-	tables   []interface{}
+	tables   []any
 }
 
 // NewResolverConfigure 初始化 ResolverConfigure
-func NewResolverConfigure(sources, replicas []string, policy string, tables []string) ResolverConfigure {
-	data := make([]interface{}, len(tables))
+func NewResolverConfigure(sources, replicas []string, policy string, tables []string) *DBResolverConfig {
+	data := make([]any, len(tables))
 	for i := range tables {
 		data[i] = tables[i]
 	}
@@ -86,6 +88,7 @@ func NewResolverConfigure(sources, replicas []string, policy string, tables []st
 	}
 }
 
+// Init appends this source/replica configuration to the resolver.
 func (e *DBResolverConfig) Init(
 	register *dbresolver.DBResolver,
 	open func(string) gorm.Dialector) *dbresolver.DBResolver {

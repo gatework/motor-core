@@ -62,6 +62,7 @@ func ctx() context.Context { return context.Background() }
 // The single most important property: a miss must be distinguishable from a
 // backend failure, otherwise an outage silently becomes a full cache bypass.
 func testMissIsDistinguishable(t *testing.T, newCache Factory) {
+	t.Helper()
 	c := newCache(t)
 	defer c.Close()
 
@@ -72,6 +73,7 @@ func testMissIsDistinguishable(t *testing.T, newCache Factory) {
 }
 
 func testEmptyValueIsNotAMiss(t *testing.T, newCache Factory) {
+	t.Helper()
 	c := newCache(t)
 	defer c.Close()
 
@@ -89,6 +91,7 @@ func testEmptyValueIsNotAMiss(t *testing.T, newCache Factory) {
 }
 
 func testExpiredKeyReportsMiss(t *testing.T, newCache Factory) {
+	t.Helper()
 	c := newCache(t)
 	defer c.Close()
 
@@ -103,6 +106,7 @@ func testExpiredKeyReportsMiss(t *testing.T, newCache Factory) {
 }
 
 func testZeroTTLNeverExpires(t *testing.T, newCache Factory) {
+	t.Helper()
 	c := newCache(t)
 	defer c.Close()
 
@@ -122,6 +126,7 @@ func testZeroTTLNeverExpires(t *testing.T, newCache Factory) {
 }
 
 func testSetOverwrites(t *testing.T, newCache Factory) {
+	t.Helper()
 	c := newCache(t)
 	defer c.Close()
 
@@ -140,6 +145,7 @@ func testSetOverwrites(t *testing.T, newCache Factory) {
 }
 
 func testDelRemoves(t *testing.T, newCache Factory) {
+	t.Helper()
 	c := newCache(t)
 	defer c.Close()
 
@@ -158,6 +164,7 @@ func testDelRemoves(t *testing.T, newCache Factory) {
 }
 
 func testDelAbsentIsNotAnError(t *testing.T, newCache Factory) {
+	t.Helper()
 	c := newCache(t)
 	defer c.Close()
 
@@ -167,6 +174,7 @@ func testDelAbsentIsNotAnError(t *testing.T, newCache Factory) {
 }
 
 func testIncrFromAbsent(t *testing.T, newCache Factory) {
+	t.Helper()
 	c := newCache(t)
 	defer c.Close()
 
@@ -180,6 +188,7 @@ func testIncrFromAbsent(t *testing.T, newCache Factory) {
 }
 
 func testIncrAccumulates(t *testing.T, newCache Factory) {
+	t.Helper()
 	c := newCache(t)
 	defer c.Close()
 
@@ -196,13 +205,14 @@ func testIncrAccumulates(t *testing.T, newCache Factory) {
 // Guards the defect the previous implementation shipped: its read-modify-write
 // was not atomic, so 200 concurrent increments landed on 151.
 func testIncrIsAtomic(t *testing.T, newCache Factory) {
+	t.Helper()
 	c := newCache(t)
 	defer c.Close()
 
 	const n = 200
 	var wg sync.WaitGroup
 	wg.Add(n)
-	for i := 0; i < n; i++ {
+	for range n {
 		go func() {
 			defer wg.Done()
 			if _, err := c.Incr(ctx(), "atomic", 1); err != nil {
@@ -222,6 +232,7 @@ func testIncrIsAtomic(t *testing.T, newCache Factory) {
 }
 
 func testIncrPreservesTTLAndRejectsOverflow(t *testing.T, newCache Factory) {
+	t.Helper()
 	c := newCache(t)
 	defer c.Close()
 	if err := c.Set(ctx(), "expiring-counter", "1", 30*time.Millisecond); err != nil {
@@ -243,6 +254,7 @@ func testIncrPreservesTTLAndRejectsOverflow(t *testing.T, newCache Factory) {
 }
 
 func testExpireOnAbsentReportsMiss(t *testing.T, newCache Factory) {
+	t.Helper()
 	c := newCache(t)
 	defer c.Close()
 
@@ -253,6 +265,7 @@ func testExpireOnAbsentReportsMiss(t *testing.T, newCache Factory) {
 }
 
 func testExpireShortensLifetime(t *testing.T, newCache Factory) {
+	t.Helper()
 	c := newCache(t)
 	defer c.Close()
 
@@ -268,6 +281,7 @@ func testExpireShortensLifetime(t *testing.T, newCache Factory) {
 }
 
 func testExpireZeroMakesPermanent(t *testing.T, newCache Factory) {
+	t.Helper()
 	c := newCache(t)
 	defer c.Close()
 
@@ -284,6 +298,7 @@ func testExpireZeroMakesPermanent(t *testing.T, newCache Factory) {
 }
 
 func testCloseIsIdempotent(t *testing.T, newCache Factory) {
+	t.Helper()
 	c := newCache(t)
 
 	if err := c.Close(); err != nil {
@@ -295,6 +310,7 @@ func testCloseIsIdempotent(t *testing.T, newCache Factory) {
 }
 
 func testUseAfterCloseReportsClosed(t *testing.T, newCache Factory) {
+	t.Helper()
 	c := newCache(t)
 	if err := c.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
@@ -309,6 +325,7 @@ func testUseAfterCloseReportsClosed(t *testing.T, newCache Factory) {
 }
 
 func testContextCancellationIsHonoured(t *testing.T, newCache Factory) {
+	t.Helper()
 	c := newCache(t)
 	defer c.Close()
 

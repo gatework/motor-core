@@ -9,10 +9,7 @@ var policies = map[string]dbresolver.Policy{
 	"random": dbresolver.RandomPolicy{},
 }
 
-type Configure interface {
-	Init(*gorm.Config, func(string) gorm.Dialector) (*gorm.DB, error)
-}
-
+// ResolverConfigure adds a source/replica resolver configuration.
 type ResolverConfigure interface {
-	Init(*dbresolver.DBResolver, func(string) gorm.Dialector) *dbresolver.DBResolver
+	Init(register *dbresolver.DBResolver, open func(string) gorm.Dialector) *dbresolver.DBResolver
 }

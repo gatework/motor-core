@@ -1,3 +1,4 @@
+// Package cache provides a bounded in-process key/value cache.
 package cache
 
 import (
@@ -47,10 +48,6 @@ type entry struct {
 	expiresAt time.Time
 }
 
-func (e entry) expired(now time.Time) bool {
-	return !e.expiresAt.IsZero() && e.expiresAt.Before(now)
-}
-
 // shardCount is how many independently locked maps the keyspace is split
 // across. It must be a power of two so the index is a mask rather than a
 // modulo.
@@ -85,25 +82,10 @@ type Memory struct {
 	wg       sync.WaitGroup
 }
 
-// shard picks the partition for a key with FNV-1a, which is short enough to
-// inline and spreads the uuid-shaped keys this cache mostly holds.
-func (m *Memory) shard(key string) *memShard {
-	const (
-		offset32 = uint32(2166136261)
-		prime32  = uint32(16777619)
-	)
-	h := offset32
-	for i := 0; i < len(key); i++ {
-		h ^= uint32(key[i])
-		h *= prime32
-	}
-	return &m.shards[h&(shardCount-1)]
-}
-
 var _ storage.Cache = (*Memory)(nil)
 
 // String identifies the in-process backend.
-func (c *Memory) String() string { return "memory" }
+func (m *Memory) String() string { return "memory" }
 
 // New constructs a bounded cache. Options controls expiry collection and size;
 // a non-positive SweepInterval disables background collection. Call Close when
@@ -146,6 +128,182 @@ func New(o Options) *Memory {
 // workload that reaches the limit at all is precisely the one that writes a new
 // key every time.
 const evictionSample = 64
+
+func expiry(ttl time.Duration) time.Time {
+	if ttl <= 0 {
+		return time.Time{}
+	}
+	return time.Now().Add(ttl)
+}
+
+// Get returns a live value or storage.ErrCacheMiss.
+func (m *Memory) Get(ctx context.Context, key string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+
+	s := m.shard(key)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return "", storage.ErrCacheClosed
+	}
+
+	e, ok := s.items[key]
+	if !ok {
+		return "", storage.ErrCacheMiss
+	}
+	if e.expired(time.Now()) {
+		delete(s.items, key)
+		return "", storage.ErrCacheMiss
+	}
+	return e.value, nil
+}
+
+// Set stores val with ttl and evicts an entry when its shard is full.
+func (m *Memory) Set(ctx context.Context, key, val string, ttl time.Duration) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	s := m.shard(key)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return storage.ErrCacheClosed
+	}
+
+	s.evictIfFull(m.maxPerShard, key)
+	s.items[key] = entry{value: val, expiresAt: expiry(ttl)}
+	return nil
+}
+
+// Del removes keys without requiring them to exist.
+func (m *Memory) Del(ctx context.Context, keys ...string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	if len(keys) == 0 {
+		shard := &m.shards[0]
+		shard.mu.Lock()
+		defer shard.mu.Unlock()
+		if shard.closed {
+			return storage.ErrCacheClosed
+		}
+		return nil
+	}
+
+	// Keys are locked one shard at a time rather than all at once; the
+	// contract makes no atomicity promise across keys.
+	for _, k := range keys {
+		s := m.shard(k)
+		s.mu.Lock()
+		if s.closed {
+			s.mu.Unlock()
+			return storage.ErrCacheClosed
+		}
+		delete(s.items, k)
+		s.mu.Unlock()
+	}
+	return nil
+}
+
+// Incr atomically adds delta to an integer value while preserving its expiry.
+func (m *Memory) Incr(ctx context.Context, key string, delta int64) (int64, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+
+	s := m.shard(key)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return 0, storage.ErrCacheClosed
+	}
+
+	var current int64
+	var expiresAt time.Time
+	if e, ok := s.items[key]; ok && !e.expired(time.Now()) {
+		n, err := strconv.ParseInt(e.value, 10, 64)
+		if err != nil {
+			return 0, err
+		}
+		current = n
+		expiresAt = e.expiresAt
+	}
+
+	overflows := delta > 0 && current > math.MaxInt64-delta
+	underflows := delta < 0 && current < math.MinInt64-delta
+	if overflows || underflows {
+		return 0, errors.New("storage: counter overflow")
+	}
+	current += delta
+	s.evictIfFull(m.maxPerShard, key)
+	// Existing counters retain their ttl, matching Redis INCRBY.
+	s.items[key] = entry{value: strconv.FormatInt(current, 10), expiresAt: expiresAt}
+	return current, nil
+}
+
+// Expire replaces the lifetime of an existing live key.
+func (m *Memory) Expire(ctx context.Context, key string, ttl time.Duration) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	s := m.shard(key)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return storage.ErrCacheClosed
+	}
+
+	e, ok := s.items[key]
+	if !ok || e.expired(time.Now()) {
+		delete(s.items, key)
+		return storage.ErrCacheMiss
+	}
+
+	e.expiresAt = expiry(ttl)
+	s.items[key] = e
+	return nil
+}
+
+// Close stops expiry collection and releases every shard.
+func (m *Memory) Close() error {
+	m.stopOnce.Do(func() {
+		close(m.stop)
+	})
+	m.wg.Wait()
+
+	for i := range m.shards {
+		s := &m.shards[i]
+		s.mu.Lock()
+		s.closed = true
+		s.items = nil
+		s.mu.Unlock()
+	}
+	return nil
+}
+
+func (e entry) expired(now time.Time) bool {
+	return !e.expiresAt.IsZero() && e.expiresAt.Before(now)
+}
+
+// shard picks the partition for a key with FNV-1a, which is short enough to
+// inline and spreads the uuid-shaped keys this cache mostly holds.
+func (m *Memory) shard(key string) *memShard {
+	const (
+		offset32 = uint32(2166136261)
+		prime32  = uint32(16777619)
+	)
+	h := offset32
+	for i := range len(key) {
+		h ^= uint32(key[i])
+		h *= prime32
+	}
+	return &m.shards[h&(shardCount-1)]
+}
 
 // evictIfFull frees a slot when the shard is at its limit and the pending write
 // would add a key rather than replace one. The caller holds the shard lock.
@@ -239,155 +397,4 @@ func (m *Memory) deleteExpired() {
 		}
 		s.mu.Unlock()
 	}
-}
-
-func expiry(ttl time.Duration) time.Time {
-	if ttl <= 0 {
-		return time.Time{}
-	}
-	return time.Now().Add(ttl)
-}
-
-func (m *Memory) Get(ctx context.Context, key string) (string, error) {
-	if err := ctx.Err(); err != nil {
-		return "", err
-	}
-
-	s := m.shard(key)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
-		return "", storage.ErrCacheClosed
-	}
-
-	e, ok := s.items[key]
-	if !ok {
-		return "", storage.ErrCacheMiss
-	}
-	if e.expired(time.Now()) {
-		delete(s.items, key)
-		return "", storage.ErrCacheMiss
-	}
-	return e.value, nil
-}
-
-func (m *Memory) Set(ctx context.Context, key, val string, ttl time.Duration) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
-	s := m.shard(key)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
-		return storage.ErrCacheClosed
-	}
-
-	s.evictIfFull(m.maxPerShard, key)
-	s.items[key] = entry{value: val, expiresAt: expiry(ttl)}
-	return nil
-}
-
-func (m *Memory) Del(ctx context.Context, keys ...string) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
-	if len(keys) == 0 {
-		shard := &m.shards[0]
-		shard.mu.Lock()
-		defer shard.mu.Unlock()
-		if shard.closed {
-			return storage.ErrCacheClosed
-		}
-		return nil
-	}
-
-	// Keys are locked one shard at a time rather than all at once; the
-	// contract makes no atomicity promise across keys.
-	for _, k := range keys {
-		s := m.shard(k)
-		s.mu.Lock()
-		if s.closed {
-			s.mu.Unlock()
-			return storage.ErrCacheClosed
-		}
-		delete(s.items, k)
-		s.mu.Unlock()
-	}
-	return nil
-}
-
-func (m *Memory) Incr(ctx context.Context, key string, delta int64) (int64, error) {
-	if err := ctx.Err(); err != nil {
-		return 0, err
-	}
-
-	s := m.shard(key)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
-		return 0, storage.ErrCacheClosed
-	}
-
-	var current int64
-	var expiresAt time.Time
-	if e, ok := s.items[key]; ok && !e.expired(time.Now()) {
-		n, err := strconv.ParseInt(e.value, 10, 64)
-		if err != nil {
-			return 0, err
-		}
-		current = n
-		expiresAt = e.expiresAt
-	}
-
-	overflows := delta > 0 && current > math.MaxInt64-delta
-	underflows := delta < 0 && current < math.MinInt64-delta
-	if overflows || underflows {
-		return 0, errors.New("storage: counter overflow")
-	}
-	current += delta
-	s.evictIfFull(m.maxPerShard, key)
-	// Existing counters retain their ttl, matching Redis INCRBY.
-	s.items[key] = entry{value: strconv.FormatInt(current, 10), expiresAt: expiresAt}
-	return current, nil
-}
-
-func (m *Memory) Expire(ctx context.Context, key string, ttl time.Duration) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
-	s := m.shard(key)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
-		return storage.ErrCacheClosed
-	}
-
-	e, ok := s.items[key]
-	if !ok || e.expired(time.Now()) {
-		delete(s.items, key)
-		return storage.ErrCacheMiss
-	}
-
-	e.expiresAt = expiry(ttl)
-	s.items[key] = e
-	return nil
-}
-
-func (m *Memory) Close() error {
-	m.stopOnce.Do(func() {
-		close(m.stop)
-	})
-	m.wg.Wait()
-
-	for i := range m.shards {
-		s := &m.shards[i]
-		s.mu.Lock()
-		s.closed = true
-		s.items = nil
-		s.mu.Unlock()
-	}
-	return nil
 }

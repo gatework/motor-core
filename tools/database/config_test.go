@@ -1,21 +1,24 @@
 package database
 
 import (
+	"os"
+	"testing"
+
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
-	"testing"
 )
 
-var dsn0 = "root:password@tcp(127.0.0.1:3306)/test?charset=utf8mb4&parseTime=True&loc=Local"
-var dsn1 = "root:password@tcp(127.0.0.1:3307)/test?charset=utf8mb4&parseTime=True&loc=Local"
-var tables = []interface{}{"sys_user", "sys_role"}
-
 func TestDBConfig_Init(t *testing.T) {
-	// 这个测试需要真实的 MySQL 连接，标记为 integration test
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
+	dsn0 := os.Getenv("MYSQL_DSN")
+	if dsn0 == "" {
+		t.Skip("MYSQL_DSN is not set; skipping MySQL integration")
 	}
-	
+	dsn1 := os.Getenv("MYSQL_REPLICA_DSN")
+	if dsn1 == "" {
+		dsn1 = dsn0
+	}
+	tables := []any{"sys_user", "sys_role"}
+
 	type fields struct {
 		dsn             string
 		connMaxIdleTime int
@@ -91,10 +94,17 @@ func TestDBConfig_Init(t *testing.T) {
 				maxOpenConns:    tt.fields.maxOpenConns,
 				registers:       tt.fields.registers,
 			}
-			_, err := e.Init(tt.args.config, tt.args.open)
+			db, err := e.Init(tt.args.config, tt.args.open)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Init() error = %v, wantErr %v", err, tt.wantErr)
 				return
+			}
+			if db != nil {
+				pool, err := db.DB()
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = pool.Close() })
 			}
 		})
 	}

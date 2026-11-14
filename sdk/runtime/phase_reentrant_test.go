@@ -22,7 +22,7 @@ func TestReentrantPhaseRunsEveryCallbackOnEveryRound(t *testing.T) {
 	app.SetPhase(AfterResource, func() { first++ })
 	app.SetPhase(AfterResource, func() { second++ })
 
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		app.RunPhase(AfterResource)
 	}
 
@@ -120,13 +120,13 @@ func TestATriggerDuringARoundIsNotDiscarded(t *testing.T) {
 	app := New()
 	captureLogs(t, app)
 
-	var rounds int32
+	var rounds atomic.Int32
 	entered := make(chan struct{}, 8)
 	release := make(chan struct{})
 	var once sync.Once
 
 	app.SetPhase(AfterResource, func() {
-		atomic.AddInt32(&rounds, 1)
+		rounds.Add(1)
 		entered <- struct{}{}
 		// Only the first round blocks; the later ones must be free to run.
 		once.Do(func() { <-release })
@@ -146,7 +146,7 @@ func TestATriggerDuringARoundIsNotDiscarded(t *testing.T) {
 
 	// Three triggers arrive while the first round is held. They collapse
 	// into one owed round - the point is that at least one survives.
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		app.RunPhase(AfterResource)
 	}
 	close(release)
@@ -156,7 +156,7 @@ func TestATriggerDuringARoundIsNotDiscarded(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("the owed round never ran: the trigger was discarded")
 	}
-	if got := atomic.LoadInt32(&rounds); got < 2 {
+	if got := rounds.Load(); got < 2 {
 		t.Errorf("the callback ran %d times; triggers that arrived during the round were dropped", got)
 	}
 }
@@ -276,20 +276,20 @@ func TestReentrantPhaseIsRaceFree(t *testing.T) {
 	app := New()
 	captureLogs(t, app)
 
-	var calls int64
-	for i := 0; i < 3; i++ {
-		app.SetPhase(AfterResource, func() { atomic.AddInt64(&calls, 1) })
+	var calls atomic.Int64
+	for range 3 {
+		app.SetPhase(AfterResource, func() { calls.Add(1) })
 	}
 
 	const goroutines, iters = 12, 30
 	var wg sync.WaitGroup
-	for i := 0; i < goroutines; i++ {
+	for i := range goroutines {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			for j := 0; j < iters; j++ {
+			for j := range iters {
 				if (i+j)%4 == 0 {
-					app.SetPhase(AfterResource, func() { atomic.AddInt64(&calls, 1) })
+					app.SetPhase(AfterResource, func() { calls.Add(1) })
 					continue
 				}
 				app.RunPhase(AfterResource)
@@ -298,7 +298,7 @@ func TestReentrantPhaseIsRaceFree(t *testing.T) {
 	}
 	wg.Wait()
 
-	if atomic.LoadInt64(&calls) == 0 {
+	if calls.Load() == 0 {
 		t.Error("no callback ran at all")
 	}
 }

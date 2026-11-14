@@ -1,10 +1,9 @@
 package logger
 
-import "fmt"
-import "context"
-
 import (
 	"bytes"
+	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"

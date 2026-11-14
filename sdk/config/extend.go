@@ -3,22 +3,15 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"sync"
 )
 
 type extendSlot interface {
-	decode(json.RawMessage) (any, error)
+	decode(data json.RawMessage) (any, error)
 }
 
 type typedExtendSlot[T any] struct{}
-
-func (*typedExtendSlot[T]) decode(data json.RawMessage) (any, error) {
-	value := new(T)
-	if err := json.Unmarshal(data, value); err != nil {
-		return nil, err
-	}
-	return value, nil
-}
 
 var (
 	extendMu      sync.RWMutex
@@ -55,15 +48,11 @@ func RegisterExtend[T any](key string) func() *T {
 func prepareExtensions(raw map[string]json.RawMessage) (map[string]any, error) {
 	extendMu.RLock()
 	slots := make(map[string]extendSlot, len(extendTargets))
-	for key, slot := range extendTargets {
-		slots[key] = slot
-	}
+	maps.Copy(slots, extendTargets)
 	extendMu.RUnlock()
 	values := make(map[string]any, len(slots))
 	if previous := current.Load(); previous != nil {
-		for key, value := range previous.extensions {
-			values[key] = value
-		}
+		maps.Copy(values, previous.extensions)
 	}
 	for key, slot := range slots {
 		data, ok := raw[key]
@@ -77,4 +66,12 @@ func prepareExtensions(raw map[string]json.RawMessage) (map[string]any, error) {
 		values[key] = value
 	}
 	return values, nil
+}
+
+func (*typedExtendSlot[T]) decode(data json.RawMessage) (any, error) {
+	value := new(T)
+	if err := json.Unmarshal(data, value); err != nil {
+		return nil, err
+	}
+	return value, nil
 }

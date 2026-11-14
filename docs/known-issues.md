@@ -1,123 +1,32 @@
-# Known Issues
+# Verification boundaries
 
-Issues that CI deliberately tolerates. Each entry states why it is excluded,
-how to reproduce it, and when it is expected to be resolved. Nothing may be
-added here without a reproduction command.
+## MySQL integration
 
-## 1. Integration tests require a live MySQL
+`tools/database.TestDatabaseConfig_Init` requires a matching live MySQL instance
+and is skipped in short mode. A passing `make ci` does not prove a deployment's
+MySQL connectivity or schema migration.
 
-**Excluded from:** every target, via `testing.Short()` guards in the tests
-themselves.
+## Host resource replacement
 
-**Affected:** `tools/database.TestDBConfig_Init`
+Settings candidates are validated before publication. A rejected candidate does
+not replace Current or extension snapshots. Preparation callbacks are application
+code: earlier callbacks can have side effects before a later callback rejects
+that candidate. There is no automatic transaction across external resources.
+Callbacks must release failed preparations; the host coordinates committing and
+retiring resource generations after borrowers finish.
 
-**Reproduce:** run `go test ./tools/database/` without `-short` while a MySQL
-instance matching the hard-coded DSN is reachable.
+Configuration watchers do not create or close process loggers. Replacing a
+published logger does not transfer ownership or close the previous root.
 
-**Plan:** move the DSN behind an environment variable so the test can run
-against a CI service container instead of being skipped.
+## Shutdown budgets
 
-## 2. A hot reload leaks the previous queue's consumers - fixed
+A deadline ends a caller's wait, not an arbitrary application callback. Handlers
+and cleanup callbacks must observe their context. Repeated listener or queue
+shutdown calls can wait for work remaining after an earlier deadline.
 
-The description below is what the code did before the fix, kept as a record.
-What it says is no longer current behaviour; the fix is at the end of the
-entry.
+## Historical reports
 
-`storage/queue/memory.go`'s `Shutdown` sets a flag and releases its wait
-group. It does not close the per-stream channels, and every consumer started
-by `Register` is blocked in `for message := range q` on one of them, so none
-of them ever returns. A host that rebuilds its queue adapter on every
-configuration reload leaks one goroutine per consumer each time - measured at
-three per reload for go-admin, roughly 25KB with the buffers.
-
-It leaks; it does not lose messages. Producers fetch the current adapter per
-call, so nothing is published to the abandoned channels after the swap.
-
-The fix is not `close(q)`: `Append` publishes with
-`select { case q <- m: default: }` and the consumer loop re-publishes a failed
-message after sleeping, so closing underneath either one panics the process
-during shutdown - worse than the leak. It needs a per-consumer stop channel,
-and the re-publish path has to stop first. **Order: stop publishing, drain,
-then close.**
-
-Fixed in
-[go-admin-team/go-admin-core#150](https://github.com/go-admin-team/go-admin-core/pull/150),
-released in v2.7.0. `Memory` gained a `stop` channel and a `consumers` wait
-group: `Shutdown` closes `stop`, each consumer leaves its `range` after
-draining what is buffered, and `Shutdown` returns only once they have all
-returned.
-
-The last step of the order above was dropped rather than implemented. The
-per-stream channels are never closed - a producer holding the adapter across
-the swap would panic on a send, and there is no cheap way to exclude one.
-Leaving them to the garbage collector costs nothing once no consumer is
-reading.
-
-## 3. Nothing can drain a queue on the way out - fixed in core, unused by the host
-
-The description below is what the code did before the fix, kept as a record.
-Core no longer behaves this way; what has not changed is that nothing calls
-the drain at exit, which is why this entry is not simply "fixed".
-
-Neither `Memory.Shutdown` nor `MemQueue.Close` delivers what is still
-buffered. `MemQueue.Close` sets `closed` before it signals its drain loop, and
-the loop's `deliver` returns immediately when `closed` is set - so the drain
-takes the messages out of the channel and discards them, which is not what the
-comment above it describes.
-
-Measured: with a consumer blocked and twenty messages published,
-`Memory.Shutdown` delivers none of them and `MemQueue.Close` delivers one.
-End to end, 227 requests produced zero `sys_opera_log` rows across a shutdown
-that exited 0 and logged "Server exiting" - the successful path.
-
-Fixed in
-[go-admin-team/go-admin-core#150](https://github.com/go-admin-team/go-admin-core/pull/150),
-released in v2.7.0. `MemQueue.Close` waits for its drain loop to finish and
-delivers what it holds instead of discarding it; `Memory.Shutdown` waits for
-every consumer to drain its own channel.
-
-**The call has to come from the host, and now does.** This module provides the
-drain; it does not decide when a process exits. Until
-[go-admin-team/go-admin#918](https://github.com/go-admin-team/go-admin/pull/918)
-the installed adapter was simply abandoned at exit - `Shutdown` ran only on the
-*previous* adapter during a reload - and what was buffered at SIGTERM was lost.
-go-admin now registers a `BeforeExit` callback that shuts down the adapter it
-installed, so on that host the drain runs.
-
-A host that registers nothing still loses the backlog, and this module cannot
-tell it so: there is no point at which it could notice the absence. Section 12
-of `contract.md` says what a host has to do.
-
-## 4. A reload can rebuild resources while the process is shutting down
-
-The configuration watcher keeps running through shutdown, so an edit landing
-in that window re-runs `database.Setup` and `storage.Setup` - rebuilding the
-pool and the queue adapter as the process is being taken apart.
-`BeginShutdown` closes the half that goes through the phase registry; closing
-the watcher itself is the host's job, and `config.Close` returns without
-waiting for a reload already in flight.
-
-## 5. `logger.DefaultLogger` is written on every reload with no synchronisation
-
-`Logger.Setup` assigns the package-level `logger.DefaultLogger` from the
-watcher goroutine on each reload, while every log call in the process reads it
-without a lock. An interface value is two words; a torn read is a crash, not a
-stale line. It is a bare exported variable, so the fix is not local.
-
-## 6. Only the first tenant gets a cron scheduler - fixed
-
-Kept as a record rather than deleted: this one was filed against go-admin from
-here because the phase work exposed it, and a reader who met the symptom before
-the fix should be able to find out what happened to it.
-
-`app/jobs`'s `Setup` looped over the tenant databases calling `setup`, and
-`setup` ended in `select {}` and never returned. With more than one entry under
-`databases:`, the loop never reached the second one. The same `select {}` also
-made the `defer crontab.Stop()` above it unreachable, so the scheduler was never
-stopped on the way out either.
-
-Fixed in
-[go-admin-team/go-admin#906](https://github.com/go-admin-team/go-admin/pull/906)
-by deleting the `select {}`, which was blocking for nothing - `cron.Start` is
-itself `go c.run()`. The stop became a `BeforeExit` callback that waits on the
-context `cron.Stop()` returns, bounded by the shutdown budget.
+Older files under docs/migration and docs/architecture record upstream decisions
+and measurements. They do not override current exported API, ownership contracts,
+or current benchmark evidence. Previously recorded legacy queue and global
+logger issues refer to implementations removed by the Motor Core refactor.

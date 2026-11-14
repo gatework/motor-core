@@ -227,11 +227,11 @@ func TestTheShutdownGateIsRaceFree(t *testing.T) {
 	captureLogs(t, app)
 
 	var wg sync.WaitGroup
-	for i := 0; i < 12; i++ {
+	for i := range 12 {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			for j := 0; j < 40; j++ {
+			for j := range 40 {
 				switch (i + j) % 4 {
 				case 0:
 					app.SetPhase(AfterResource, func() {})

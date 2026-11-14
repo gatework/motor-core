@@ -1,8 +1,9 @@
 package env
 
 import (
-	"github.com/gatework/motor-core/config/source"
 	"sync"
+
+	"github.com/gatework/motor-core/config/source"
 )
 
 type watcher struct {

@@ -60,6 +60,8 @@ type Handler func(ctx context.Context, msg Message) error
 
 // Queue is the contract for a message queue. Operations check ctx before
 // arguments and state, so a cancelled caller consistently gets ctx.Err().
+//
+//nolint:iface // Queue is the common cross-package backend contract used by conformance tests.
 type Queue interface {
 	// Publish enqueues a message. The topic must have a subscriber, otherwise
 	// ErrNoHandler is returned rather than dropping the message silently.

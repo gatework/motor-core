@@ -28,11 +28,11 @@ func TestUnguardedAccessorsAreRaceFree(t *testing.T) {
 
 	const goroutines, iters = 16, 100
 	var wg sync.WaitGroup
-	for i := 0; i < goroutines; i++ {
+	for i := range goroutines {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			for j := 0; j < iters; j++ {
+			for j := range iters {
 				switch (i + j) % 8 {
 				case 0:
 					app.SetBefore(func() {})
@@ -73,23 +73,19 @@ func TestConcurrentRunAndRegisterIsRaceFree(t *testing.T) {
 
 	const goroutines = 16
 	var wg sync.WaitGroup
-	for i := 0; i < goroutines; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range goroutines {
+		wg.Go(func() {
 			app.SetBefore(func() {
 				mu.Lock()
 				ran++
 				mu.Unlock()
 			})
-		}()
+		})
 	}
-	for i := 0; i < 4; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 4 {
+		wg.Go(func() {
 			app.RunBefore()
-		}()
+		})
 	}
 	wg.Wait()
 
