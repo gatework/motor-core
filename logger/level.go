@@ -3,9 +3,9 @@ package logger
 import (
 	"context"
 	"fmt"
-	"os"
 )
 
+// Level orders logging severity from trace through fatal.
 type Level int8
 
 const (
@@ -20,7 +20,7 @@ const (
 	WarnLevel
 	// ErrorLevel level. Logs. Used for errors that should definitely be noted.
 	ErrorLevel
-	// FatalLevel level. Logs and then calls `logger.Exit(1)`. highest level of severity.
+	// FatalLevel is the highest logging severity; hosts decide whether to exit.
 	FatalLevel
 )
 
@@ -82,22 +82,44 @@ func GetLevel(levelStr string) (Level, error) {
 }
 
 // Info logs a message at the info log level.
-func Info(args ...any)                  { NewHelper(Default()).Info(args...) }
-func Infof(format string, args ...any)  { Logf(InfoLevel, format, args...) }
-func Trace(args ...any)                 { NewHelper(Default()).Trace(args...) }
+func Info(args ...any) { NewHelper(Default()).Info(args...) }
+
+// Infof formats and records a message at info level.
+func Infof(format string, args ...any) { Logf(InfoLevel, format, args...) }
+
+// Trace records a message at trace level.
+func Trace(args ...any) { NewHelper(Default()).Trace(args...) }
+
+// Tracef formats and records a message at trace level.
 func Tracef(format string, args ...any) { Logf(TraceLevel, format, args...) }
-func Debug(args ...any)                 { NewHelper(Default()).Debug(args...) }
+
+// Debug records a message at debug level.
+func Debug(args ...any) { NewHelper(Default()).Debug(args...) }
+
+// Debugf formats and records a message at debug level.
 func Debugf(format string, args ...any) { Logf(DebugLevel, format, args...) }
-func Warn(args ...any)                  { NewHelper(Default()).Warn(args...) }
-func Warnf(format string, args ...any)  { Logf(WarnLevel, format, args...) }
-func Error(args ...any)                 { NewHelper(Default()).Error(args...) }
+
+// Warn records a message at warning level.
+func Warn(args ...any) { NewHelper(Default()).Warn(args...) }
+
+// Warnf formats and records a message at warning level.
+func Warnf(format string, args ...any) { Logf(WarnLevel, format, args...) }
+
+// Error records a message at error level.
+func Error(args ...any) { NewHelper(Default()).Error(args...) }
+
+// Errorf formats and records a message at error level.
 func Errorf(format string, args ...any) { Logf(ErrorLevel, format, args...) }
+
+// Fatal records a fatal-level message; process termination belongs to the host.
 func Fatal(args ...any) {
 	Default().Log(context.Background(), FatalLevel, fmt.Sprint(args...))
-	os.Exit(1)
 }
-func Fatalf(format string, args ...any) { Logf(FatalLevel, format, args...); os.Exit(1) }
 
+// Fatalf formats a fatal-level message; process termination belongs to the host.
+func Fatalf(format string, args ...any) { Logf(FatalLevel, format, args...) }
+
+// V reports whether log accepts level, using the default when log is nil.
 func V(level Level, log Logger) bool {
 	if log == nil {
 		log = Default()

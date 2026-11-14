@@ -11,6 +11,7 @@ import (
 
 //go:generate protoc -I. --go_out=paths=source_relative:. errors.proto
 
+// Presentation modes select how a consumer displays an error.
 const (
 	Silent       = "0"
 	MessageWarn  = "1"
@@ -19,6 +20,7 @@ const (
 	Page         = "9"
 )
 
+// Error records a message at error level.
 func (e *Error) Error() string {
 	b, _ := json.Marshal(e)
 	return string(b)

@@ -44,8 +44,8 @@ func (s *memory) Watch() (source.Watcher, error) {
 	return w, nil
 }
 
-func (m *memory) Write(cs *source.ChangeSet) error {
-	m.Update(cs)
+func (s *memory) Write(cs *source.ChangeSet) error {
+	s.Update(cs)
 	return nil
 }
 
@@ -90,6 +90,7 @@ func (s *memory) String() string {
 	return "memory"
 }
 
+// NewSource constructs an in-memory source that owns its initial data.
 func NewSource(opts ...source.Option) source.Source {
 	var options source.Options
 	for _, o := range opts {
@@ -101,11 +102,8 @@ func NewSource(opts ...source.Option) source.Source {
 		ChangeSet: &source.ChangeSet{Format: "json", Source: "memory", Data: []byte(`{}`)},
 	}
 
-	if options.Context != nil {
-		c, ok := options.Context.Value(changeSetKey{}).(*source.ChangeSet)
-		if ok {
-			s.Update(c)
-		}
+	if options.ChangeSet != nil {
+		s.Update(options.ChangeSet)
 	}
 
 	return s

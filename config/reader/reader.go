@@ -8,9 +8,11 @@ import (
 )
 
 // Reader is an interface for merging changesets
+//
+//nolint:iface // Reader is a public port implemented and consumed by sibling packages.
 type Reader interface {
-	Merge(...*source.ChangeSet) (*source.ChangeSet, error)
-	Values(*source.ChangeSet) (Values, error)
+	Merge(changes ...*source.ChangeSet) (*source.ChangeSet, error)
+	Values(change *source.ChangeSet) (Values, error)
 	String() string
 }
 

@@ -79,6 +79,10 @@ func TestExtractClaimsWithForeignPayload(t *testing.T) {
 	if got := ExtractClaims(c); len(got) != 0 {
 		t.Errorf("want empty claims for a foreign payload, got %v", got)
 	}
+	c.Set("JWT_TOKEN", 42)
+	if got := GetToken(c); got != "" {
+		t.Errorf("want an empty token for a foreign context value, got %q", got)
+	}
 }
 
 func TestExtractClaimsFromTokenWithForeignClaims(t *testing.T) {

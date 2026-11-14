@@ -1,9 +1,7 @@
 package utils
 
 import (
-	"crypto/md5"
 	"encoding/base64"
-	"encoding/hex"
 	"os"
 	"strings"
 	"time"
@@ -11,21 +9,18 @@ import (
 	"github.com/google/uuid"
 )
 
-func Hmac(data string) string {
-	h := md5.New()
-	h.Write([]byte(data))
-	return hex.EncodeToString(h.Sum(nil))
-}
-
+// IsStringEmpty reports whether a string contains only spaces.
 func IsStringEmpty(str string) bool {
 	return strings.Trim(str, " ") == ""
 }
 
+// GetUUID returns a random UUID without separators.
 func GetUUID() string {
 	u := uuid.New()
 	return strings.ReplaceAll(u.String(), "-", "")
 }
 
+// PathExists reports whether an entry exists at a path.
 func PathExists(path string) bool {
 	_, err := os.Stat(path)
 	if err == nil {
@@ -39,6 +34,7 @@ func PathExists(path string) bool {
 	return false
 }
 
+// Base64ToImage decodes a base64 image payload.
 func Base64ToImage(imageBase64 string) ([]byte, error) {
 	image, err := base64.StdEncoding.DecodeString(imageBase64)
 	if err != nil {
@@ -48,6 +44,7 @@ func Base64ToImage(imageBase64 string) ([]byte, error) {
 	return image, nil
 }
 
+// GetDirFiles returns the regular file paths under a directory.
 func GetDirFiles(dir string) ([]string, error) {
 	dirList, err := os.ReadDir(dir)
 	if err != nil {
@@ -72,6 +69,7 @@ func GetDirFiles(dir string) ([]string, error) {
 	return filesRet, nil
 }
 
+// GetCurrentTimeStamp returns the current Unix time in milliseconds.
 func GetCurrentTimeStamp() int64 {
 	return time.Now().UnixNano() / 1e6
 }

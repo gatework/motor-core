@@ -33,7 +33,7 @@ var DefaultAsyncConfig = AsyncConfig{
 
 // logEntry owns its field slice. Values stored in Field.Any remain borrowed.
 type logEntry struct {
-	ctx    context.Context
+	ctx    context.Context //nolint:containedctx // A queued entry retains its call context only until this owned worker processes it.
 	level  Level
 	msg    string
 	fields []Field
@@ -57,6 +57,7 @@ type Async struct {
 	fullCount    atomic.Uint64
 }
 
+// NewAsyncLogger constructs one bounded worker that owns the wrapped logger.
 func NewAsyncLogger(log Logger, config AsyncConfig) *Async {
 	if log == nil {
 		log = Default()
@@ -78,8 +79,13 @@ func NewAsyncLogger(log Logger, config AsyncConfig) *Async {
 	return async
 }
 
-func (a *Async) Enabled(level Level) bool    { return a.logger.Enabled(level) }
+// Enabled reports whether the wrapped logger accepts level.
+func (a *Async) Enabled(level Level) bool { return a.logger.Enabled(level) }
+
+// With returns a field view that borrows the logger resources.
 func (a *Async) With(fields ...Field) Logger { return bind(a, fields) }
+
+// Log records an entry with per-call context and structured fields.
 func (a *Async) Log(ctx context.Context, level Level, message string, fields ...Field) {
 	if !a.Enabled(level) {
 		return
@@ -113,6 +119,48 @@ func (a *Async) Log(ctx context.Context, level Level, message string, fields ...
 		}
 	}
 }
+
+// Sync waits for accepted entries and synchronizes the wrapped output.
+func (a *Async) Sync() error {
+	barrier := make(chan struct{})
+	a.mu.RLock()
+	if a.closed {
+		a.mu.RUnlock()
+		<-a.done
+		return nil
+	}
+	select {
+	case a.buffer <- logEntry{synced: barrier}:
+		a.mu.RUnlock()
+		<-barrier
+		return syncLogger(a.logger)
+	case <-a.stop:
+		a.mu.RUnlock()
+		<-a.done
+		return nil
+	}
+}
+
+// Close completes owned work and closes the wrapped root once.
+func (a *Async) Close() error {
+	a.once.Do(func() {
+		close(a.stop)
+		a.mu.Lock()
+		a.closed = true
+		close(a.buffer)
+		a.mu.Unlock()
+		<-a.done
+		a.closeErr = closeLogger(a.logger)
+	})
+	return a.closeErr
+}
+
+// GetStats returns the current queue length and cumulative dropped-entry count.
+func (a *Async) GetStats() (queueLength int64, droppedCount uint64) {
+	return int64(len(a.buffer)), a.droppedCount.Load()
+}
+
+func (a *Async) presetFields() []Field { return presetFields(a.logger) }
 
 // send is called while admissions are locked. Close signals stop before
 // acquiring the write lock, so a blocked publisher cannot deadlock shutdown.
@@ -181,42 +229,3 @@ func (a *Async) flushLoop() {
 		}
 	}
 }
-
-func (a *Async) Sync() error {
-	barrier := make(chan struct{})
-	a.mu.RLock()
-	if a.closed {
-		a.mu.RUnlock()
-		<-a.done
-		return nil
-	}
-	select {
-	case a.buffer <- logEntry{synced: barrier}:
-		a.mu.RUnlock()
-		<-barrier
-		return syncLogger(a.logger)
-	case <-a.stop:
-		a.mu.RUnlock()
-		<-a.done
-		return nil
-	}
-}
-
-func (a *Async) Close() error {
-	a.once.Do(func() {
-		close(a.stop)
-		a.mu.Lock()
-		a.closed = true
-		close(a.buffer)
-		a.mu.Unlock()
-		<-a.done
-		a.closeErr = closeLogger(a.logger)
-	})
-	return a.closeErr
-}
-
-func (a *Async) GetStats() (queueLength int64, droppedCount uint64) {
-	return int64(len(a.buffer)), a.droppedCount.Load()
-}
-
-func (l *Async) presetFields() []Field { return presetFields(l.logger) }

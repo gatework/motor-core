@@ -1,125 +1,75 @@
 package user
 
 import (
-	"fmt"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 
-	jwt "github.com/gatework/motor-core/jwtauth"
-	"github.com/gatework/motor-core/sdk/pkg"
+	"github.com/gatework/motor-core/jwtauth"
 )
 
-// claimString reads a claim that has to be text.
-//
-// A number is not accepted in either encoding it can arrive in. Accepting
-// json.Number and not float64 would make the reading depend on how the parser
-// was configured: the same token would give a name of "42" with UseNumber on
-// and no name at all with it off.
-func claimString(v any) (string, bool) {
-	s, ok := v.(string)
-	return s, ok
-}
-
 // ExtractClaims reads claims using the middleware's validated representation.
-func ExtractClaims(c *gin.Context) jwt.MapClaims {
-	return jwt.ExtractClaims(c)
+func ExtractClaims(c *gin.Context) jwtauth.MapClaims {
+	return jwtauth.ExtractClaims(c)
 }
 
+// Get returns a validated claim by key, or nil when it is absent.
 func Get(c *gin.Context, key string) any {
-	data := ExtractClaims(c)
-	if data[key] != nil {
-		return data[key]
-	}
-	fmt.Println(pkg.GetCurrentTimeStr() + " [WARING] " + c.Request.Method + " " + c.Request.URL.Path + " Get 缺少 " + key)
-	return nil
+	return ExtractClaims(c)[key]
 }
 
-func UserID(c *gin.Context) int {
-	data := ExtractClaims(c)
-	if data["identity"] != nil {
-		if id, ok := data.Int64("identity"); ok {
-			return int(id)
-		}
-		fmt.Println(pkg.GetCurrentTimeStr() + " [WARING] " + c.Request.Method + " " + c.Request.URL.Path + " UserID: identity is not a number")
+// ID returns the numeric identity claim, or zero when absent or invalid.
+func ID(c *gin.Context) int {
+	return number(c, "identity")
+}
+
+// IDString returns the identity claim as decimal digits, or an empty string.
+func IDString(c *gin.Context) string {
+	id, ok := ExtractClaims(c).Int64("identity")
+	if !ok {
+		return ""
+	}
+	return strconv.FormatInt(id, 10)
+}
+
+// Name returns the textual display-name claim.
+func Name(c *gin.Context) string {
+	return text(c, "nice")
+}
+
+// RoleName returns the role-key claim.
+func RoleName(c *gin.Context) string {
+	return text(c, "rolekey")
+}
+
+// RoleID returns the numeric role claim, or zero when absent or invalid.
+func RoleID(c *gin.Context) int {
+	return number(c, "roleid")
+}
+
+// DepartmentID returns the numeric department claim, or zero when absent or invalid.
+func DepartmentID(c *gin.Context) int {
+	return number(c, "deptid")
+}
+
+// DepartmentName returns the textual department-key claim.
+func DepartmentName(c *gin.Context) string {
+	return text(c, "deptkey")
+}
+
+func text(c *gin.Context, key string) string {
+	value, _ := Get(c, key).(string)
+	return value
+}
+
+func number(c *gin.Context, key string) int {
+	value, ok := ExtractClaims(c).Int64(key)
+	if !ok {
 		return 0
 	}
-	fmt.Println(pkg.GetCurrentTimeStr() + " [WARING] " + c.Request.Method + " " + c.Request.URL.Path + " UserID 缺少 identity")
-	return 0
-}
-
-func UserIDString(c *gin.Context) string {
-	data := ExtractClaims(c)
-	if data["identity"] != nil {
-		if id, ok := data.Int64("identity"); ok {
-			return pkg.Int64ToString(id)
-		}
-		fmt.Println(pkg.GetCurrentTimeStr() + " [WARING] " + c.Request.Method + " " + c.Request.URL.Path + " UserIDString: identity is not a number")
-		return ""
+	id := int(value)
+	if int64(id) != value {
+		return 0
 	}
-	fmt.Println(pkg.GetCurrentTimeStr() + " [WARING] " + c.Request.Method + " " + c.Request.URL.Path + " UserIDString 缺少 identity")
-	return ""
-}
-
-func UserName(c *gin.Context) string {
-	data := ExtractClaims(c)
-	if data["nice"] != nil {
-		if s, ok := claimString(data["nice"]); ok {
-			return s
-		}
-		return ""
-	}
-	fmt.Println(pkg.GetCurrentTimeStr() + " [WARING] " + c.Request.Method + " " + c.Request.URL.Path + " UserName 缺少 nice")
-	return ""
-}
-
-func RoleName(c *gin.Context) string {
-	data := ExtractClaims(c)
-	if data["rolekey"] != nil {
-		if s, ok := claimString(data["rolekey"]); ok {
-			return s
-		}
-		return ""
-	}
-	fmt.Println(pkg.GetCurrentTimeStr() + " [WARING] " + c.Request.Method + " " + c.Request.URL.Path + " RoleName 缺少 rolekey")
-	return ""
-}
-
-func RoleID(c *gin.Context) int {
-	data := ExtractClaims(c)
-	if data["roleid"] != nil {
-		id, ok := data.Int64("roleid")
-		if !ok {
-			return 0
-		}
-		i := int(id)
-		return i
-	}
-	fmt.Println(pkg.GetCurrentTimeStr() + " [WARING] " + c.Request.Method + " " + c.Request.URL.Path + " RoleID 缺少 roleid")
-	return 0
-}
-
-func DepartmentID(c *gin.Context) int {
-	data := ExtractClaims(c)
-	if data["deptid"] != nil {
-		id, ok := data.Int64("deptid")
-		if !ok {
-			return 0
-		}
-		i := int(id)
-		return i
-	}
-	fmt.Println(pkg.GetCurrentTimeStr() + " [WARING] " + c.Request.Method + " " + c.Request.URL.Path + " DepartmentID 缺少 deptid")
-	return 0
-}
-
-func DepartmentName(c *gin.Context) string {
-	data := ExtractClaims(c)
-	if data["deptkey"] != nil {
-		if s, ok := claimString(data["deptkey"]); ok {
-			return s
-		}
-		return ""
-	}
-	fmt.Println(pkg.GetCurrentTimeStr() + " [WARING] " + c.Request.Method + " " + c.Request.URL.Path + " DepartmentName 缺少 deptkey")
-	return ""
+	return id
 }

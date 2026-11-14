@@ -25,12 +25,13 @@ cannot acquire dependencies on higher-level request or host wiring.
 
 ## Current conformance gaps
 
-Adoption is an enforcing gate, not a declaration that existing code conforms.
-The initial uncapped shared lint scan (`--max-issues-per-linter=0
---max-same-issues=0`) reports 1,142 findings, including 575 revive,
-119 intrange, 107 staticcheck, 63 funcorder and 50 thelper findings. Formatting
-also fails. No baseline suppression, disabled rule, or successful-exit wrapper is
-installed. `make check` remains red until these findings are resolved.
+The initial adoption scan reported 1,142 lint findings. These have been addressed
+through formatting, idiomatic naming, explicit error handling, and smaller
+functions. The shared rules remain enabled and the distributed files remain
+unchanged. `config/encoder.Encoder` has a documented local `iface` exception:
+source and reader both consume the same codec protocol implemented by four
+format packages. `JSONTime` retains documented exceptions required by SQL NULL
+values and its pointer scanning/value marshaling hooks.
 
 MOD-1 specifies Go1.26 and a1.26/1.27 matrix. This module retains the explicitly
 approved Go1.27.4 minimum: downgrading would contradict the current toolchain
@@ -46,6 +47,6 @@ changes. Keep existing regression and allocation tests, update the API snapshot
 when intended signatures change, and retain the Redis integration verification.
 Do not infer remote CI success from local gate subsets.
 
-Full shuffled tests also require explicit MySQL fixture handling: the existing
-`tools/database.TestDBConfig_Init` attempts fixed local DSNs outside short mode.
-It remains a TST-5 migration gap; this adoption does not suppress that test.
+MySQL integration is opt-in through `MYSQL_DSN` and optionally
+`MYSQL_REPLICA_DSN`; an explicitly configured but unavailable fixture fails.
+Redis integration runs when `REDIS_URL` is set, including in CI.

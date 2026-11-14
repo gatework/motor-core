@@ -12,7 +12,7 @@ import (
 type cacheStore struct {
 	// The third-party Store interface has no context parameter. Its owner
 	// explicitly supplies the lifetime of operations at this adapter boundary.
-	ctx        context.Context
+	ctx        context.Context //nolint:containedctx // The third-party Store methods have no context parameter; this adapter owns their supplied lifetime.
 	cache      storage.Cache
 	expiration time.Duration
 }
@@ -28,12 +28,12 @@ func (s *cacheStore) Set(id, value string) error {
 	return s.cache.Set(s.ctx, id, value, s.expiration)
 }
 
-func (s *cacheStore) Get(id string, clear bool) string {
+func (s *cacheStore) Get(id string, consume bool) string {
 	value, err := s.cache.Get(s.ctx, id)
 	if err != nil {
 		return ""
 	}
-	if clear {
+	if consume {
 		if err := s.cache.Del(s.ctx, id); err != nil {
 			return ""
 		}
@@ -41,9 +41,9 @@ func (s *cacheStore) Get(id string, clear bool) string {
 	return value
 }
 
-func (s *cacheStore) Verify(id, answer string, clear bool) bool {
+func (s *cacheStore) Verify(id, answer string, consume bool) bool {
 	if id == "" || answer == "" {
 		return false
 	}
-	return s.Get(id, clear) == answer
+	return s.Get(id, consume) == answer
 }

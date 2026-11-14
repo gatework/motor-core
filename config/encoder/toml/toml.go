@@ -1,3 +1,4 @@
+// Package toml encodes configuration values as TOML.
 package toml
 
 import (
@@ -28,6 +29,7 @@ func (t tomlEncoder) String() string {
 	return "toml"
 }
 
+// NewEncoder constructs a TOML configuration encoder.
 func NewEncoder() encoder.Encoder {
 	return tomlEncoder{}
 }

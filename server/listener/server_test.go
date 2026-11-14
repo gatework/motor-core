@@ -2,10 +2,16 @@ package listener
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -231,5 +237,47 @@ func TestHeaderBudgetDoesNotBoundStreamingResponses(t *testing.T) {
 	}
 	if string(body) != "firstsecond" {
 		t.Fatalf("stream ended early: %q", body)
+	}
+}
+
+func TestConfiguredListenerServesTLS(t *testing.T) {
+	fixture := httptest.NewTLSServer(http.NotFoundHandler())
+	defer fixture.Close()
+	certificate := fixture.TLS.Certificates[0]
+	key, err := x509.MarshalPKCS8PrivateKey(certificate.PrivateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	certPath, keyPath := filepath.Join(t.TempDir(), "cert.pem"), filepath.Join(t.TempDir(), "key.pem")
+	if err := os.WriteFile(certPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certificate.Certificate[0]}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: key}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	socket, tlsConfig, err := listen(t.Context(), options{addr: "127.0.0.1:0", certFile: certPath, keyFile: keyPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer socket.Close()
+	srv := &http.Server{Handler: http.NotFoundHandler(), TLSConfig: tlsConfig, ReadHeaderTimeout: time.Second}
+	done := make(chan error, 1)
+	go func() { done <- serve(srv, socket) }()
+	client := fixture.Client()
+	client.Timeout = time.Second
+	response, err := client.Get("https://" + socket.Addr().String())
+	if err != nil {
+		_ = srv.Close()
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	if response.TLS == nil || response.TLS.Version < tls.VersionTLS12 {
+		t.Fatal("TLS was not negotiated")
+	}
+	if err := srv.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; !errors.Is(err, http.ErrServerClosed) {
+		t.Fatal(err)
 	}
 }

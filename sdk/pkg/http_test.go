@@ -12,7 +12,7 @@ import (
 // url it rejects dereferenced a nil request. The caller's process ended
 // instead of the call returning the error NewRequest had already produced.
 func TestGetReturnsAnErrorForARejectedURL(t *testing.T) {
-	got, err := Get("://not a url")
+	got, err := Get(t.Context(), "://not a url")
 	if err == nil {
 		t.Fatalf("Get returned %q and no error for a url NewRequest rejects", got)
 	}
@@ -30,7 +30,7 @@ func TestGetReadsTheBody(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got, err := Get(srv.URL)
+	got, err := Get(t.Context(), srv.URL)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestGetReportsATruncatedBody(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got, err := Get(srv.URL)
+	got, err := Get(t.Context(), srv.URL)
 	if err == nil {
 		t.Fatalf("Get returned %q and no error for a body that ended early", got)
 	}
@@ -63,7 +63,7 @@ func TestPostReportsAValueItCannotEncode(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got, err := Post(srv.URL, math.Inf(1), "application/json")
+	got, err := Post(t.Context(), srv.URL, math.Inf(1), "application/json")
 	if err == nil {
 		t.Fatalf("Post returned %q and no error for a value json cannot encode", got)
 	}
@@ -75,7 +75,7 @@ func TestPostSendsAndReads(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got, err := Post(srv.URL, map[string]string{"a": "b"}, "application/json")
+	got, err := Post(t.Context(), srv.URL, map[string]string{"a": "b"}, "application/json")
 	if err != nil {
 		t.Fatalf("Post: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestGetGivesUpOnAServerThatNeverAnswers(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := get(srv.URL, 200*time.Millisecond)
+		_, err := get(t.Context(), srv.URL, 200*time.Millisecond)
 		done <- err
 	}()
 

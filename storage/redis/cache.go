@@ -49,20 +49,7 @@ func OpenCache(ctx context.Context, opts *goredis.Options) (*Cache, error) {
 // String identifies the backend.
 func (c *Cache) String() string { return "redis" }
 
-// check reports whether the cache may still be used. The context is examined
-// first, so a caller that gave up is never told something else went wrong.
-func (c *Cache) check(ctx context.Context) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	if c.closed {
-		return storage.ErrCacheClosed
-	}
-	return nil
-}
-
+// Get returns a value or storage.ErrCacheMiss for an absent key.
 func (c *Cache) Get(ctx context.Context, key string) (string, error) {
 	if err := c.check(ctx); err != nil {
 		return "", err
@@ -75,6 +62,7 @@ func (c *Cache) Get(ctx context.Context, key string) (string, error) {
 	return v, err
 }
 
+// Set stores val with ttl; nonpositive ttl disables expiry.
 func (c *Cache) Set(ctx context.Context, key, val string, ttl time.Duration) error {
 	if err := c.check(ctx); err != nil {
 		return err
@@ -87,6 +75,7 @@ func (c *Cache) Set(ctx context.Context, key, val string, ttl time.Duration) err
 	return c.client.Set(ctx, key, val, ttl).Err()
 }
 
+// Del removes keys without requiring them to exist.
 func (c *Cache) Del(ctx context.Context, keys ...string) error {
 	if err := c.check(ctx); err != nil {
 		return err
@@ -97,6 +86,7 @@ func (c *Cache) Del(ctx context.Context, keys ...string) error {
 	return c.client.Del(ctx, keys...).Err()
 }
 
+// Incr atomically adds delta using Redis integer arithmetic.
 func (c *Cache) Incr(ctx context.Context, key string, delta int64) (int64, error) {
 	if err := c.check(ctx); err != nil {
 		return 0, err
@@ -105,6 +95,7 @@ func (c *Cache) Incr(ctx context.Context, key string, delta int64) (int64, error
 	return c.client.IncrBy(ctx, key, delta).Result()
 }
 
+// Expire replaces a key lifetime or clears it when ttl is nonpositive.
 func (c *Cache) Expire(ctx context.Context, key string, ttl time.Duration) error {
 	if err := c.check(ctx); err != nil {
 		return err
@@ -137,17 +128,6 @@ func (c *Cache) Expire(ctx context.Context, key string, ttl time.Duration) error
 	return nil
 }
 
-func (c *Cache) assertExists(ctx context.Context, key string) error {
-	n, err := c.client.Exists(ctx, key).Result()
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return storage.ErrCacheMiss
-	}
-	return nil
-}
-
 // Close marks the cache unusable and, when it owns the client, shuts it down.
 //
 // The lock is released before the client is closed: draining the connection
@@ -165,6 +145,31 @@ func (c *Cache) Close() error {
 
 	if owned {
 		return c.client.Close()
+	}
+	return nil
+}
+
+// check reports whether the cache may still be used. The context is examined
+// first, so a caller that gave up is never told something else went wrong.
+func (c *Cache) check(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.closed {
+		return storage.ErrCacheClosed
+	}
+	return nil
+}
+
+func (c *Cache) assertExists(ctx context.Context, key string) error {
+	n, err := c.client.Exists(ctx, key).Result()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return storage.ErrCacheMiss
 	}
 	return nil
 }

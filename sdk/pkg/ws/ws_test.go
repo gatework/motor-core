@@ -37,7 +37,10 @@ func dialedConnection(t *testing.T) (*websocket.Conn, <-chan []byte) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	conn, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http"), nil)
+	conn, response, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http"), nil)
+	if response != nil {
+		_ = response.Body.Close()
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +182,10 @@ func managedPeer(t *testing.T, m *Manager) *websocket.Conn {
 		}
 		return conn, nil
 	}}
-	peer, _, err := dialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http"), nil)
+	peer, response, err := dialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http"), nil)
+	if response != nil {
+		_ = response.Body.Close()
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

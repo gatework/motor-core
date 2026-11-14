@@ -1,3 +1,4 @@
+// Package table inspects database table metadata for code generation.
 package table
 
 import (
@@ -35,6 +36,7 @@ func DynamicTable(f func(string) string, baseTable, fieldValue string) func(db *
 	}
 }
 
+// CreateSubTable reserves the subtable-creation hook.
 func CreateSubTable(f func(string) string) {
 
 }

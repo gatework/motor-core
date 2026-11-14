@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -36,18 +37,18 @@ const getTimeout = 30 * time.Second
 // The body is returned as it arrived; the status code is not checked, so an
 // error page comes back as an ordinary result. That is the existing contract
 // and changing it would reach every caller.
-func Get(url string) (string, error) {
-	return get(url, getTimeout)
+func Get(ctx context.Context, url string) (string, error) {
+	return get(ctx, url, getTimeout)
 }
 
 // get exists so that "there is a timeout" can be tested at all. Exercising it
 // through Get means waiting the full thirty seconds, and a test that slow gets
 // skipped — which would leave the property this fix is about unverified.
-func get(url string, timeout time.Duration) (string, error) {
+func get(ctx context.Context, url string, timeout time.Duration) (string, error) {
 	// The header was set before this check, so a url NewRequest rejects gave
 	// the caller a nil dereference instead of the error it returns — on the
 	// cron goroutine, for a malformed url someone typed into a job.
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", err
 	}
@@ -90,7 +91,7 @@ func effectiveTimeout(d time.Duration) time.Duration {
 // data：        POST请求提交的数据
 // contentType： 请求体格式，如：application/json
 // content：     请求放回的内容
-func Post(url string, data any, contentType string) ([]byte, error) {
+func Post(ctx context.Context, url string, data any, contentType string) ([]byte, error) {
 
 	// 超时时间：5秒
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -100,7 +101,12 @@ func Post(url string, data any, contentType string) ([]byte, error) {
 		return nil, err
 	}
 
-	resp, err := client.Post(url, contentType, bytes.NewBuffer(jsonStr))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonStr))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", contentType)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}

@@ -1,3 +1,4 @@
+// Package yaml encodes configuration values as YAML.
 package yaml
 
 import (
@@ -20,6 +21,7 @@ func (y yamlEncoder) String() string {
 	return "yaml"
 }
 
+// NewEncoder constructs a YAML configuration encoder.
 func NewEncoder() encoder.Encoder {
 	return yamlEncoder{}
 }

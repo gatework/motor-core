@@ -53,10 +53,12 @@ and must not continually register more callbacks.
 ## Panic handling
 
 A callback panic is logged with its registration site and stack; later callbacks
-continue. `WithName` supplies a label. `WithFatal` makes a startup callback panic
-exit the process with status 1, skipping deferred cleanup. It is ignored for
-shutdown callbacks so remaining cleanup can run. The guard cannot recover a
-panic in a goroutine started by the callback.
+continue. `WithName` supplies a label. `WithFatal` turns a startup callback panic
+into a failure that propagates unchanged through framework guards; later startup
+callbacks do not run. Normal panic unwinding runs deferred cleanup. The framework
+does not call `os.Exit`: the host owns recovery and its process exit code.
+`WithFatal` is ignored for shutdown callbacks so remaining cleanup can run. The
+guard cannot recover a panic in a goroutine started by the callback.
 
 Middleware retrieval through `GetHandlerFunc` returns `(gin.HandlerFunc, bool)`.
 A host must reject a missing required authentication or authorization handler.

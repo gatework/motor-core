@@ -42,7 +42,7 @@ func benchMiddleware() *GinJWTMiddleware {
 		PayloadFunc: func(data any) MapClaims {
 			return MapClaims{
 				IdentityKey:  1,
-				RoleIdKey:    1,
+				RoleIDKey:    1,
 				RoleKey:      "admin",
 				NiceKey:      "admin",
 				DataScopeKey: "2",

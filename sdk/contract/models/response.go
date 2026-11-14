@@ -8,7 +8,7 @@ type Response struct {
 	Data any `json:"data"`
 	// Msg is a human-readable message.
 	Msg       string `json:"msg"`
-	RequestId string `json:"requestId"`
+	RequestID string `json:"requestId"`
 }
 
 // Page wraps a list result with its pagination metadata.

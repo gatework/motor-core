@@ -1,3 +1,4 @@
+// Package memory merges configuration sources into owned snapshots.
 package memory
 
 import (
@@ -15,6 +16,7 @@ import (
 )
 
 type memory struct {
+	sync.RWMutex
 	exit    chan struct{}
 	once    sync.Once
 	workers sync.WaitGroup
@@ -22,13 +24,12 @@ type memory struct {
 
 	// Operations serialize source reads and merges without blocking readers.
 	operation sync.Mutex
-	sync.RWMutex
-	snap     *loader.Snapshot
-	vals     reader.Values
-	sets     []*source.ChangeSet
-	sources  []source.Source
-	watchers map[*watcher]struct{}
-	version  uint64
+	snap      *loader.Snapshot
+	vals      reader.Values
+	sets      []*source.ChangeSet
+	sources   []source.Source
+	watchers  map[*watcher]struct{}
+	version   uint64
 }
 
 type updateValue struct {
@@ -49,73 +50,6 @@ type watcher struct {
 	remove   func()
 }
 
-func (m *memory) watch(idx int, s source.Source, initial source.Watcher) {
-	defer m.workers.Done()
-	w := initial
-	for {
-		select {
-		case <-m.exit:
-			if w != nil {
-				_ = w.Stop()
-			}
-			return
-		default:
-		}
-		if w == nil {
-			var err error
-			w, err = s.Watch()
-			if err != nil {
-				if !m.retry() {
-					return
-				}
-				continue
-			}
-			// Catch writes made while a failed watcher was being restarted.
-			if cs, err := s.Read(); err == nil {
-				_ = m.replace(idx, cs)
-			}
-		}
-
-		finished := make(chan struct{})
-		stopped := make(chan struct{})
-		go func(active source.Watcher) {
-			defer close(stopped)
-			select {
-			case <-m.exit:
-			case <-finished:
-			}
-			_ = active.Stop()
-		}(w)
-
-		for {
-			cs, err := w.Next()
-			if err != nil {
-				break
-			}
-			// A malformed update leaves the previous snapshot usable and does
-			// not tear down a watcher that can deliver a later correction.
-			_ = m.replace(idx, cs)
-		}
-		close(finished)
-		<-stopped
-		w = nil
-		if !m.retry() {
-			return
-		}
-	}
-}
-
-func (m *memory) retry() bool {
-	timer := time.NewTimer(time.Second)
-	defer timer.Stop()
-	select {
-	case <-m.exit:
-		return false
-	case <-timer.C:
-		return true
-	}
-}
-
 func copySet(cs *source.ChangeSet) *source.ChangeSet {
 	if cs == nil {
 		return nil
@@ -123,73 +57,6 @@ func copySet(cs *source.ChangeSet) *source.ChangeSet {
 	result := *cs
 	result.Data = bytes.Clone(cs.Data)
 	return &result
-}
-
-func (m *memory) replace(idx int, cs *source.ChangeSet) error {
-	m.operation.Lock()
-	defer m.operation.Unlock()
-	m.RLock()
-	if m.snap == nil {
-		m.RUnlock()
-		return nil
-	}
-	sets := slices.Clone(m.sets)
-	m.RUnlock()
-	sets[idx] = copySet(cs)
-	return m.publish(sets)
-}
-
-// publish is called with operation held. Failed decoding never replaces state.
-func (m *memory) publish(sets []*source.ChangeSet) error {
-	set, err := m.opts.Reader.Merge(sets...)
-	if err != nil {
-		return err
-	}
-	vals, err := m.opts.Reader.Values(set)
-	if err != nil {
-		return err
-	}
-	m.Lock()
-	defer m.Unlock()
-	select {
-	case <-m.exit:
-		return source.ErrWatcherStopped
-	default:
-	}
-	m.version++
-	m.sets = sets
-	m.vals = vals
-	m.snap = &loader.Snapshot{ChangeSet: set, Version: fmt.Sprintf("%020d", m.version)}
-	m.updateLocked()
-	return nil
-}
-
-func (m *memory) update() {
-	m.RLock()
-	defer m.RUnlock()
-	m.updateLocked()
-}
-
-func (m *memory) updateLocked() {
-	if m.snap == nil {
-		return
-	}
-	for w := range m.watchers {
-		w.offer(updateValue{version: m.snap.Version, value: m.vals.Get(w.path...)})
-	}
-}
-
-func (w *watcher) offer(update updateValue) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if update.version <= w.pending.version {
-		return
-	}
-	w.pending = update
-	select {
-	case w.updates <- struct{}{}:
-	default:
-	}
 }
 
 func (m *memory) Snapshot() (*loader.Snapshot, error) {
@@ -260,11 +127,7 @@ func (m *memory) Load(sources ...source.Source) error {
 	watches := make([]source.Watcher, len(sources))
 	for i, s := range sources {
 		if s == nil {
-			for _, w := range watches {
-				if w != nil {
-					_ = w.Stop()
-				}
-			}
+			stopWatches(watches)
 			return errors.New("config: nil source")
 		}
 		// Register before Read; a write between those calls is then either in
@@ -272,32 +135,20 @@ func (m *memory) Load(sources ...source.Source) error {
 		watches[i], _ = s.Watch()
 		cs, err := s.Read()
 		if err != nil {
-			for _, w := range watches {
-				if w != nil {
-					_ = w.Stop()
-				}
-			}
+			stopWatches(watches)
 			return fmt.Errorf("read source %s: %w", s.String(), err)
 		}
 		sets = append(sets, copySet(cs))
 	}
 	if err := m.publish(sets); err != nil {
-		for _, w := range watches {
-			if w != nil {
-				_ = w.Stop()
-			}
-		}
+		stopWatches(watches)
 		return err
 	}
 	m.Lock()
 	select {
 	case <-m.exit:
 		m.Unlock()
-		for _, w := range watches {
-			if w != nil {
-				_ = w.Stop()
-			}
-		}
+		stopWatches(watches)
 		return source.ErrWatcherStopped
 	default:
 	}
@@ -374,6 +225,7 @@ func (w *watcher) Stop() error {
 	return nil
 }
 
+// NewLoader constructs a caller-owned loader with coalesced source updates.
 func NewLoader(opts ...loader.Option) loader.Loader {
 	options := loader.Options{Reader: json.NewReader()}
 	for _, o := range opts {
@@ -389,4 +241,146 @@ func NewLoader(opts ...loader.Option) loader.Loader {
 		go m.watch(i, s, w)
 	}
 	return m
+}
+
+func stopWatches(watches []source.Watcher) {
+	for _, w := range watches {
+		if w != nil {
+			_ = w.Stop()
+		}
+	}
+}
+
+func (m *memory) watch(idx int, s source.Source, initial source.Watcher) {
+	defer m.workers.Done()
+	w := initial
+	for {
+		select {
+		case <-m.exit:
+			if w != nil {
+				_ = w.Stop()
+			}
+			return
+		default:
+		}
+		if w == nil {
+			var err error
+			w, err = s.Watch()
+			if err != nil {
+				if !m.retry() {
+					return
+				}
+				continue
+			}
+			// Catch writes made while a failed watcher was being restarted.
+			if cs, err := s.Read(); err == nil {
+				_ = m.replace(idx, cs)
+			}
+		}
+
+		finished := make(chan struct{})
+		stopped := make(chan struct{})
+		go func(active source.Watcher) {
+			defer close(stopped)
+			select {
+			case <-m.exit:
+			case <-finished:
+			}
+			_ = active.Stop()
+		}(w)
+
+		for {
+			cs, err := w.Next()
+			if err != nil {
+				break
+			}
+			// A malformed update leaves the previous snapshot usable and does
+			// not tear down a watcher that can deliver a later correction.
+			_ = m.replace(idx, cs)
+		}
+		close(finished)
+		<-stopped
+		w = nil
+		if !m.retry() {
+			return
+		}
+	}
+}
+
+func (m *memory) retry() bool {
+	timer := time.NewTimer(time.Second)
+	defer timer.Stop()
+	select {
+	case <-m.exit:
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
+func (m *memory) replace(idx int, cs *source.ChangeSet) error {
+	m.operation.Lock()
+	defer m.operation.Unlock()
+	m.RLock()
+	if m.snap == nil {
+		m.RUnlock()
+		return nil
+	}
+	sets := slices.Clone(m.sets)
+	m.RUnlock()
+	sets[idx] = copySet(cs)
+	return m.publish(sets)
+}
+
+// publish is called with operation held. Failed decoding never replaces state.
+func (m *memory) publish(sets []*source.ChangeSet) error {
+	set, err := m.opts.Reader.Merge(sets...)
+	if err != nil {
+		return err
+	}
+	vals, err := m.opts.Reader.Values(set)
+	if err != nil {
+		return err
+	}
+	m.Lock()
+	defer m.Unlock()
+	select {
+	case <-m.exit:
+		return source.ErrWatcherStopped
+	default:
+	}
+	m.version++
+	m.sets = sets
+	m.vals = vals
+	m.snap = &loader.Snapshot{ChangeSet: set, Version: fmt.Sprintf("%020d", m.version)}
+	m.updateLocked()
+	return nil
+}
+
+func (m *memory) update() {
+	m.RLock()
+	defer m.RUnlock()
+	m.updateLocked()
+}
+
+func (m *memory) updateLocked() {
+	if m.snap == nil {
+		return
+	}
+	for w := range m.watchers {
+		w.offer(updateValue{version: m.snap.Version, value: m.vals.Get(w.path...)})
+	}
+}
+
+func (w *watcher) offer(update updateValue) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if update.version <= w.pending.version {
+		return
+	}
+	w.pending = update
+	select {
+	case w.updates <- struct{}{}:
+	default:
+	}
 }

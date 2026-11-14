@@ -336,7 +336,7 @@ func DefaultConfig() *Config {
 	}
 }
 
-// Validate 验证配置
+// Validate reports unsupported settings before constructing logging resources.
 func (c *Config) Validate() error {
 	if c == nil {
 		return fmt.Errorf("configuration is nil")
@@ -347,6 +347,13 @@ func (c *Config) Validate() error {
 	if _, err := GetAdapter(c.Adapter.Type); err != nil {
 		return err
 	}
+	if err := c.validateOutput(); err != nil {
+		return err
+	}
+	return c.Plugins.validate()
+}
+
+func (c *Config) validateOutput() error {
 	switch c.Output.Format {
 	case "", "json", "text", "console":
 	default:
@@ -366,40 +373,57 @@ func (c *Config) Validate() error {
 	if c.Output.Network != nil {
 		return fmt.Errorf("network output is not implemented")
 	}
-	if c.Plugins.Metrics != nil && c.Plugins.Metrics.Enabled {
+	return nil
+}
+
+func (p PluginsConfig) validate() error {
+	if p.Metrics != nil && p.Metrics.Enabled {
 		return fmt.Errorf("metrics plugin is not implemented")
 	}
-	if c.Plugins.Tracing != nil && c.Plugins.Tracing.Enabled {
+	if p.Tracing != nil && p.Tracing.Enabled {
 		return fmt.Errorf("tracing plugin is not implemented")
 	}
-	if plugin := c.Plugins.Sampling; plugin != nil && plugin.Enabled {
-		if plugin.Initial < 0 || plugin.Thereafter < 0 || plugin.Tick < 0 {
-			return fmt.Errorf("sampling values must be nonnegative")
-		}
-		for _, level := range plugin.ExcludeLevels {
-			if !isValidLevel(level) {
-				return fmt.Errorf("invalid excluded sampling level %q", level)
-			}
-		}
+	if err := p.Sampling.validate(); err != nil {
+		return err
 	}
-	if plugin := c.Plugins.Async; plugin != nil && plugin.Enabled {
-		if plugin.BufferSize < 0 || plugin.FlushInterval < 0 {
+	if p.Async != nil && p.Async.Enabled {
+		if p.Async.BufferSize < 0 || p.Async.FlushInterval < 0 {
 			return fmt.Errorf("async values must be nonnegative")
 		}
 	}
-	if plugin := c.Plugins.Sanitize; plugin != nil && plugin.Enabled {
-		for _, rule := range plugin.Rules {
-			if rule.FieldPattern == "" {
-				return fmt.Errorf("sanitize pattern is empty")
-			}
-			if _, err := regexp.Compile(rule.FieldPattern); err != nil {
-				return fmt.Errorf("invalid sanitize pattern: %w", err)
-			}
-			switch rule.Strategy {
-			case "mask_all", "mask_partial", "hash":
-			default:
-				return fmt.Errorf("invalid sanitize strategy %q", rule.Strategy)
-			}
+	return p.Sanitize.validate()
+}
+
+func (p *SamplingPluginConfig) validate() error {
+	if p == nil || !p.Enabled {
+		return nil
+	}
+	if p.Initial < 0 || p.Thereafter < 0 || p.Tick < 0 {
+		return fmt.Errorf("sampling values must be nonnegative")
+	}
+	for _, level := range p.ExcludeLevels {
+		if !isValidLevel(level) {
+			return fmt.Errorf("invalid excluded sampling level %q", level)
+		}
+	}
+	return nil
+}
+
+func (p *SanitizePluginConfig) validate() error {
+	if p == nil || !p.Enabled {
+		return nil
+	}
+	for _, rule := range p.Rules {
+		if rule.FieldPattern == "" {
+			return fmt.Errorf("sanitize pattern is empty")
+		}
+		if _, err := regexp.Compile(rule.FieldPattern); err != nil {
+			return fmt.Errorf("invalid sanitize pattern: %w", err)
+		}
+		switch rule.Strategy {
+		case "mask_all", "mask_partial", "hash":
+		default:
+			return fmt.Errorf("invalid sanitize strategy %q", rule.Strategy)
 		}
 	}
 	return nil

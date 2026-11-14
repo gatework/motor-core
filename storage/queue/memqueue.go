@@ -1,3 +1,4 @@
+// Package queue provides bounded in-process message delivery.
 package queue
 
 import (
@@ -56,6 +57,7 @@ func New(size int) *Memory {
 
 func (*Memory) String() string { return "memory" }
 
+// Subscribe registers a topic handler before consumption begins.
 func (q *Memory) Subscribe(ctx context.Context, topic string, h storage.Handler) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -82,6 +84,7 @@ func (q *Memory) Subscribe(ctx context.Context, topic string, h storage.Handler)
 	return nil
 }
 
+// Publish copies the payload map and enqueues it within the caller budget.
 func (q *Memory) Publish(ctx context.Context, msg storage.Message) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -117,6 +120,7 @@ func (q *Memory) Publish(ctx context.Context, msg storage.Message) error {
 	}
 }
 
+// Run consumes subscribed topics until cancellation or shutdown completes.
 func (q *Memory) Run(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -140,6 +144,23 @@ func (q *Memory) Run(ctx context.Context) error {
 		q.stopWorkers(ctx)
 		<-q.done
 		return nil
+	}
+}
+
+// Shutdown rejects new publishers and drains accepted messages within ctx.
+func (q *Memory) Shutdown(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	cancel := q.stopWorkers(ctx)
+	stopCancel := context.AfterFunc(ctx, cancel)
+	defer stopCancel()
+	select {
+	case <-q.done:
+		return nil
+	case <-ctx.Done():
+		cancel()
+		return ctx.Err()
 	}
 }
 
@@ -215,20 +236,4 @@ func (q *Memory) stopWorkers(ctx context.Context) context.CancelFunc {
 		}()
 	}
 	return q.cancel
-}
-
-func (q *Memory) Shutdown(ctx context.Context) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	cancel := q.stopWorkers(ctx)
-	stopCancel := context.AfterFunc(ctx, cancel)
-	defer stopCancel()
-	select {
-	case <-q.done:
-		return nil
-	case <-ctx.Done():
-		cancel()
-		return ctx.Err()
-	}
 }

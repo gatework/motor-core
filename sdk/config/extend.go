@@ -8,18 +8,10 @@ import (
 )
 
 type extendSlot interface {
-	decode(json.RawMessage) (any, error)
+	decode(data json.RawMessage) (any, error)
 }
 
 type typedExtendSlot[T any] struct{}
-
-func (*typedExtendSlot[T]) decode(data json.RawMessage) (any, error) {
-	value := new(T)
-	if err := json.Unmarshal(data, value); err != nil {
-		return nil, err
-	}
-	return value, nil
-}
 
 var (
 	extendMu      sync.RWMutex
@@ -74,4 +66,12 @@ func prepareExtensions(raw map[string]json.RawMessage) (map[string]any, error) {
 		values[key] = value
 	}
 	return values, nil
+}
+
+func (*typedExtendSlot[T]) decode(data json.RawMessage) (any, error) {
+	value := new(T)
+	if err := json.Unmarshal(data, value); err != nil {
+		return nil, err
+	}
+	return value, nil
 }

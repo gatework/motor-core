@@ -22,7 +22,7 @@ func TestLogger(t *testing.T) {
 	ctx := context.TODO()
 	ctx = context.WithValue(ctx, &loggerKey{}, h3)
 	v := ctx.Value(&loggerKey{})
-	ll := any(v).(*Helper)
+	ll := v.(*Helper)
 	ll.Info("test_msg")
 }
 

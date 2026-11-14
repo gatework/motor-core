@@ -23,6 +23,7 @@ type zapSink struct {
 	closed bool
 }
 
+// NewZapLogger constructs a Zap adapter and reports invalid settings or output failures.
 func NewZapLogger(opts ...Option) (*Zap, error) {
 	options := resolveOptions(opts)
 	if err := validateOptions(options); err != nil {
@@ -49,8 +50,14 @@ func NewZapLogger(opts ...Option) (*Zap, error) {
 	sink := &zapSink{core: core, opts: options, owned: owned}
 	return &Zap{root: newRoot(sink, options)}, nil
 }
-func (z *zapSink) Enabled(level Level) bool    { return z.core.Enabled(toZapLevel(level)) }
+
+// Enabled reports whether the wrapped logger accepts level.
+func (z *zapSink) Enabled(level Level) bool { return z.core.Enabled(toZapLevel(level)) }
+
+// With returns a field view that borrows the logger resources.
 func (z *zapSink) With(fields ...Field) Logger { return bind(z, fields) }
+
+// Log records an entry with per-call context and structured fields.
 func (z *zapSink) Log(ctx context.Context, level Level, message string, fields ...Field) {
 	if !z.Enabled(level) {
 		return
@@ -73,6 +80,8 @@ func (z *zapSink) Log(ctx context.Context, level Level, message string, fields .
 	}
 	_ = z.core.Write(entry, toZapFields(fields))
 }
+
+// Sync waits for accepted entries and synchronizes the wrapped output.
 func (z *zapSink) Sync() error {
 	z.mu.RLock()
 	defer z.mu.RUnlock()
@@ -83,6 +92,8 @@ func (z *zapSink) Sync() error {
 	// has no userspace buffer; only synchronize explicitly supplied writers.
 	return syncOutput(z.opts.Out)
 }
+
+// Close completes owned work and closes the wrapped root once.
 func (z *zapSink) Close() error {
 	z.mu.Lock()
 	defer z.mu.Unlock()

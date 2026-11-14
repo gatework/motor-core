@@ -1,3 +1,4 @@
+// Package sdk wires runtime resources and host bootstrap configuration.
 package sdk
 
 import "github.com/gatework/motor-core/sdk/runtime"

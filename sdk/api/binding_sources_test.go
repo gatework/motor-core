@@ -16,8 +16,8 @@ import (
 	"github.com/gin-gonic/gin/binding"
 )
 
-func requestAPI(t testing.TB, target, contentType, body string) *API {
-	t.Helper()
+func requestAPI(tb testing.TB, target, contentType, body string) *API {
+	tb.Helper()
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest(http.MethodPut, target, strings.NewReader(body))
@@ -25,7 +25,7 @@ func requestAPI(t testing.TB, target, contentType, body string) *API {
 	c.Params = gin.Params{{Key: "id", Value: "7"}}
 	a, err := New(c, Dependencies{})
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 	return a
 }

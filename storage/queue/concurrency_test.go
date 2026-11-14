@@ -1,3 +1,4 @@
+// Package queue_test verifies queue isolation and concurrent access.
 package queue
 
 import (
@@ -77,6 +78,7 @@ func TestSlowTopicDoesNotBlockAnotherTopic(t *testing.T) {
 }
 
 func benchPublish(b *testing.B, size, topics int) {
+	b.Helper()
 	q := New(size)
 	for i := range topics {
 		if err := q.Subscribe(b.Context(), "s"+strconv.Itoa(i), func(context.Context, storage.Message) error {

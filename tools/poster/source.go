@@ -1,55 +1,48 @@
 package poster
 
 import (
-	"bytes"
-	"crypto/tls"
-	"errors"
+	"context"
+	"fmt"
 	"image"
-	"io"
 	"net/http"
 	"os"
+	"strings"
+	"time"
 )
 
-// GetImage 从源读取图片，支持网络和本地
-func GetImage(src string) (m image.Image, err error) {
-	var r *bytes.Reader
-	r, err = getResourceReader(src)
+// GetImage decodes an image from a local path or an HTTP URL. Remote requests
+// verify TLS certificates and honour ctx and a bounded client timeout.
+func GetImage(ctx context.Context, src string) (image.Image, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if strings.HasPrefix(src, "http://") || strings.HasPrefix(src, "https://") {
+		return remoteImage(ctx, src)
+	}
+	file, err := os.Open(src)
 	if err != nil {
 		return nil, err
 	}
-	m, _, err = image.Decode(r)
-	return
+	defer file.Close()
+	img, _, err := image.Decode(file)
+	return img, err
 }
 
-// getResourceReader 读取图片 支持本地和网络图片
-func getResourceReader(src string) (r *bytes.Reader, err error) {
-	if len(src) < 5 {
-		return nil, errors.New("图片源错误")
+func remoteImage(ctx context.Context, src string) (image.Image, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, src, nil)
+	if err != nil {
+		return nil, err
 	}
-
-	//跳过证书验证
-	c := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		},
+	client := &http.Client{Timeout: 30 * time.Second}
+	response, err := client.Do(req)
+	if err != nil {
+		return nil, err
 	}
-	if src[0:4] == "http" {
-		resp, err := c.Get(src)
-		if err != nil {
-			return r, err
-		}
-		defer resp.Body.Close()
-		fileBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return r, err
-		}
-		r = bytes.NewReader(fileBytes)
-	} else {
-		fileBytes, err := os.ReadFile(src)
-		if err != nil {
-			return nil, err
-		}
-		r = bytes.NewReader(fileBytes)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("poster: image response status %d", response.StatusCode)
 	}
-	return r, nil
+	// Decoders consume a stream; no second full copy of an image is retained.
+	img, _, err := image.Decode(response.Body)
+	return img, err
 }

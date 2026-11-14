@@ -1,3 +1,4 @@
+// Package xml encodes configuration values as XML.
 package xml
 
 import (
@@ -20,6 +21,7 @@ func (x xmlEncoder) String() string {
 	return "xml"
 }
 
+// NewEncoder constructs a XML configuration encoder.
 func NewEncoder() encoder.Encoder {
 	return xmlEncoder{}
 }

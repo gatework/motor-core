@@ -8,6 +8,7 @@ type Pagination struct {
 	PageSize  int `form:"pageSize"`
 }
 
+// GetPageIndex returns a positive page index, defaulting to one.
 func (m *Pagination) GetPageIndex() int {
 	if m.PageIndex <= 0 {
 		m.PageIndex = 1
@@ -15,6 +16,7 @@ func (m *Pagination) GetPageIndex() int {
 	return m.PageIndex
 }
 
+// GetPageSize returns a positive page size, defaulting to ten.
 func (m *Pagination) GetPageSize() int {
 	if m.PageSize <= 0 {
 		m.PageSize = 10

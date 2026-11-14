@@ -151,9 +151,9 @@ func WithRotation(maxSize, maxAge, maxBackups int, compress bool) Option {
 // WithSampling 设置日志采样配置
 func WithSampling(config SamplingConfig) Option {
 	return func(o *Options) {
-		copy := config
-		copy.ExcludeLevels = slices.Clone(config.ExcludeLevels)
-		o.Sampling = &copy
+		snapshot := config
+		snapshot.ExcludeLevels = slices.Clone(config.ExcludeLevels)
+		o.Sampling = &snapshot
 	}
 }
 
@@ -161,8 +161,8 @@ func WithSampling(config SamplingConfig) Option {
 // WithAsync 设置异步日志配置
 func WithAsync(config AsyncConfig) Option {
 	return func(o *Options) {
-		copy := config
-		o.Async = &copy
+		snapshot := config
+		o.Async = &snapshot
 	}
 }
 
@@ -170,9 +170,9 @@ func WithAsync(config AsyncConfig) Option {
 // WithSanitizer 设置脱敏配置
 func WithSanitizer(config SanitizerConfig) Option {
 	return func(o *Options) {
-		copy := config
-		copy.Rules = slices.Clone(config.Rules)
-		o.Sanitizer = &copy
+		snapshot := config
+		snapshot.Rules = slices.Clone(config.Rules)
+		o.Sanitizer = &snapshot
 	}
 }
 
@@ -204,6 +204,7 @@ func resolveOptions(opts []Option) Options {
 	return options
 }
 
+// WithEnableStacktrace controls stacktrace capture for error and fatal entries.
 func WithEnableStacktrace(enabled bool) Option {
 	return func(opts *Options) { opts.EnableStacktrace = enabled }
 }

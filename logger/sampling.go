@@ -37,6 +37,7 @@ type Sampling struct {
 	closeErr error
 }
 
+// NewSamplingLogger constructs a shared sampling budget for the logger and its field views.
 func NewSamplingLogger(log Logger, config SamplingConfig) *Sampling {
 	if log == nil {
 		log = Default()
@@ -53,13 +54,31 @@ func NewSamplingLogger(log Logger, config SamplingConfig) *Sampling {
 	config.ExcludeLevels = slices.Clone(config.ExcludeLevels)
 	return &Sampling{logger: log, config: config, start: time.Now()}
 }
-func (s *Sampling) Enabled(level Level) bool    { return s.logger.Enabled(level) }
+
+// Enabled reports whether the wrapped logger accepts level.
+func (s *Sampling) Enabled(level Level) bool { return s.logger.Enabled(level) }
+
+// With returns a field view that borrows the logger resources.
 func (s *Sampling) With(fields ...Field) Logger { return bind(s, fields) }
+
+// Log records an entry with per-call context and structured fields.
 func (s *Sampling) Log(ctx context.Context, level Level, message string, fields ...Field) {
 	if s.Enabled(level) && (level >= ErrorLevel || slices.Contains(s.config.ExcludeLevels, level) || s.shouldSample()) {
 		s.logger.Log(ctx, level, message, fields...)
 	}
 }
+
+// Sync waits for accepted entries and synchronizes the wrapped output.
+func (s *Sampling) Sync() error { return syncLogger(s.logger) }
+
+// Close completes owned work and closes the wrapped root once.
+func (s *Sampling) Close() error {
+	s.once.Do(func() { s.closeErr = closeLogger(s.logger) })
+	return s.closeErr
+}
+
+func (s *Sampling) presetFields() []Field { return presetFields(s.logger) }
+
 func (s *Sampling) shouldSample() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -72,10 +91,3 @@ func (s *Sampling) shouldSample() bool {
 	initial := uint64(s.config.Initial)
 	return s.counter <= initial || (s.counter-initial-1)%uint64(s.config.Thereafter) == 0
 }
-func (s *Sampling) Sync() error { return syncLogger(s.logger) }
-func (s *Sampling) Close() error {
-	s.once.Do(func() { s.closeErr = closeLogger(s.logger) })
-	return s.closeErr
-}
-
-func (l *Sampling) presetFields() []Field { return presetFields(l.logger) }

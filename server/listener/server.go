@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+// Server owns a listening socket and its request-draining lifecycle.
 type Server struct {
 	name  string
 	mutex sync.Mutex
@@ -128,16 +129,7 @@ func (e *Server) Run(ctx context.Context) (runErr error) {
 		e.mutex.Unlock()
 	}()
 
-	var tlsConfig *tls.Config
-	if opts.keyFile != "" || opts.certFile != "" {
-		cert, err := tls.LoadX509KeyPair(opts.certFile, opts.keyFile)
-		if err != nil {
-			return err
-		}
-		tlsConfig = &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
-	}
-	lc := net.ListenConfig{}
-	l, err := lc.Listen(startCtx, "tcp", opts.addr)
+	l, tlsConfig, err := listen(startCtx, opts)
 	if err != nil {
 		select {
 		case <-run.stop:
@@ -153,11 +145,9 @@ func (e *Server) Run(ctx context.Context) (runErr error) {
 		ReadHeaderTimeout: opts.readHeaderTimeout,
 		IdleTimeout:       opts.idleTimeout,
 	}
-	if tlsConfig != nil {
-		l = tls.NewListener(l, tlsConfig)
-	}
+	srv.TLSConfig = tlsConfig
 	serving := make(chan error, 1)
-	go func() { serving <- srv.Serve(l) }()
+	go func() { serving <- serve(srv, l) }()
 	if opts.endHook != nil {
 		defer opts.endHook()
 	}
@@ -230,4 +220,25 @@ func (e *Server) Shutdown(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+func listen(ctx context.Context, opts options) (net.Listener, *tls.Config, error) {
+	var tlsConfig *tls.Config
+	if opts.keyFile != "" || opts.certFile != "" {
+		cert, err := tls.LoadX509KeyPair(opts.certFile, opts.keyFile)
+		if err != nil {
+			return nil, nil, err
+		}
+		tlsConfig = &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
+	}
+	lc := net.ListenConfig{}
+	l, err := lc.Listen(ctx, "tcp", opts.addr)
+	return l, tlsConfig, err
+}
+
+func serve(srv *http.Server, listener net.Listener) error {
+	if srv.TLSConfig != nil {
+		return srv.ServeTLS(listener, "", "")
+	}
+	return srv.Serve(listener)
 }

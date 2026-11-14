@@ -66,7 +66,9 @@ func KeyMatch2(path, pattern string) (bool, error) {
 
 func compileKeyMatch2(pattern string) (*regexp.Regexp, error) {
 	if v, ok := keyMatch2Cache.Load(pattern); ok {
-		return v.(*regexp.Regexp), nil
+		if cached, ok := v.(*regexp.Regexp); ok {
+			return cached, nil
+		}
 	}
 
 	expr := strings.ReplaceAll(pattern, "/*", "/.*")

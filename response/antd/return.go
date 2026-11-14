@@ -18,7 +18,7 @@ func Error(c *gin.Context, errCode string, errMsg string, showType string) {
 	if showType != "" {
 		res.ShowType = showType
 	}
-	res.TraceId = pkg.RequestID(c)
+	res.TraceID = pkg.RequestID(c)
 	res.ErrorCode = errCode
 	c.Set("result", res)
 	c.Set("status", errCode)
@@ -31,18 +31,19 @@ func OK(c *gin.Context, data any) {
 	res.Data = data
 	res.Success = true
 	res.Status = "done"
-	res.TraceId = pkg.RequestID(c)
+	res.TraceID = pkg.RequestID(c)
 	c.Set("result", res)
 	c.Set("status", http.StatusOK)
 	c.AbortWithStatusJSON(http.StatusOK, res)
 }
 
+// UpFileOK writes a successful file-upload response.
 func UpFileOK(c *gin.Context, data any) {
 	var res response
 	res.Data = data
 	res.Success = true
 	res.Status = "done"
-	res.TraceId = pkg.RequestID(c)
+	res.TraceID = pkg.RequestID(c)
 	c.Set("result", res)
 	c.Set("status", http.StatusOK)
 	c.AbortWithStatusJSON(http.StatusOK, res)
@@ -56,12 +57,13 @@ func PageOK(c *gin.Context, result any, total int, current int, pageSize int) {
 	res.Current = current
 	res.PageSize = pageSize
 	res.Success = true
-	res.TraceId = pkg.RequestID(c)
+	res.TraceID = pkg.RequestID(c)
 	c.Set("result", res)
 	c.Set("status", http.StatusOK)
 	c.AbortWithStatusJSON(http.StatusOK, res)
 }
 
+// ListOK writes a successful item-list response.
 func ListOK(c *gin.Context, result any, total int, current int, pageSize int) {
 	var res lists
 	res.ListData.List = result
@@ -69,7 +71,7 @@ func ListOK(c *gin.Context, result any, total int, current int, pageSize int) {
 	res.ListData.Current = current
 	res.ListData.PageSize = pageSize
 	res.Success = true
-	res.TraceId = pkg.RequestID(c)
+	res.TraceID = pkg.RequestID(c)
 	c.Set("result", res)
 	c.Set("status", http.StatusOK)
 	c.AbortWithStatusJSON(http.StatusOK, res)

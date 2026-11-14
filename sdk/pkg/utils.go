@@ -2,8 +2,6 @@ package pkg
 
 import (
 	"errors"
-	"log"
-	"runtime"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -13,10 +11,13 @@ import (
 )
 
 const (
+	// TrafficKey names the HTTP correlation-ID header.
 	TrafficKey = "X-Request-Id"
-	LoggerKey  = "_go-admin-logger-request"
+	// LoggerKey names the request-scoped logger context entry.
+	LoggerKey = "_go-admin-logger-request"
 )
 
+// CompareHashAndPassword checks a plaintext password against its bcrypt digest.
 func CompareHashAndPassword(e string, p string) (bool, error) {
 	err := bcrypt.CompareHashAndPassword([]byte(e), []byte(p))
 	if err != nil {
@@ -51,8 +52,6 @@ func HasError(err error, msg string, code ...int) {
 		if msg == "" {
 			msg = err.Error()
 		}
-		_, file, line, _ := runtime.Caller(1)
-		log.Printf("%s:%v error: %#v", file, line, err)
 		panic("CustomError#" + strconv.Itoa(statusCode) + "#" + msg)
 	}
 }

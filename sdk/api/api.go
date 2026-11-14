@@ -15,6 +15,7 @@ import (
 	"github.com/gatework/motor-core/tools/language"
 )
 
+// DefaultLanguage is the locale used when the request supplies no preference.
 var DefaultLanguage = "zh-CN"
 
 // Dependencies are supplied by the host when it creates a request handler.
@@ -32,6 +33,7 @@ type API struct {
 	Cache   storage.Cache
 }
 
+// New constructs a request handler with explicit dependencies.
 func New(c *gin.Context, deps Dependencies) (*API, error) {
 	if c == nil || c.Request == nil {
 		return nil, errors.New("api: request context is required")
@@ -107,7 +109,7 @@ func (e *API) Custom(data gin.H) {
 
 // getAcceptLanguage reports the language the request asked for, falling back
 // to DefaultLanguage.
-func (e API) getAcceptLanguage() string {
+func (e *API) getAcceptLanguage() string {
 	languages := language.ParseAcceptLanguage(e.Context.GetHeader("Accept-Language"), nil)
 	if len(languages) == 0 {
 		return DefaultLanguage

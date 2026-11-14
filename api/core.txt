@@ -6,7 +6,7 @@ func DriverDigitFunc() (id, b64s, answer string, err error)
 func DriverStringFunc() (id, b64s, answer string, err error)
 func NewCacheStore(ctx context.Context, cache storage.Cache, expiration time.Duration) base64Captcha.Store
 func SetStore(s base64Captcha.Store)
-func Verify(id, code string, clear bool) bool
+func Verify(id, code string, consume bool) bool
 
 ## github.com/gatework/motor-core/casbin
 var ReloadInterval = time.Minute
@@ -30,9 +30,9 @@ func (c *Config) Del(path ...string)
 func (c *Config) Get(path ...string) reader.Value
 func (c *Config) Load(sources ...source.Source) error
 func (c *Config) LoadFile(path string) error
-func (c *Config) Map() map[string]interface{}
+func (c *Config) Map() map[string]any
 func (c *Config) Options() Options
-func (c *Config) Scan(v interface{}) error
+func (c *Config) Scan(v any) error
 func (c *Config) Set(val any, path ...string) error
 func (c *Config) String() string
 func (c *Config) Sync() error
@@ -48,7 +48,6 @@ type Options struct {
 	Loader loader.Loader
 	Reader reader.Reader
 	Source []source.Source
-	Context context.Context
 	Entity Entity
 type Watcher interface {
 	Next() (reader.Value, error)
@@ -56,8 +55,8 @@ type Watcher interface {
 
 ## github.com/gatework/motor-core/config/encoder
 type Encoder interface {
-	Encode(interface{}) ([]byte, error)
-	Decode([]byte, interface{}) error
+	Encode(value any) ([]byte, error)
+	Decode(data []byte, value any) error
 	String() string
 
 ## github.com/gatework/motor-core/config/encoder/json
@@ -75,16 +74,15 @@ func NewEncoder() encoder.Encoder
 ## github.com/gatework/motor-core/config/loader
 type Loader interface {
 	Close() error
-	Load(...source.Source) error
+	Load(sources ...source.Source) error
 	Snapshot() (*Snapshot, error)
 	Sync() error
-	Watch(...string) (Watcher, error)
+	Watch(path ...string) (Watcher, error)
 	String() string
 type Option func(o *Options)
 type Options struct {
 	Reader reader.Reader
 	Source []source.Source
-	Context context.Context
 type Snapshot struct {
 	ChangeSet *source.ChangeSet
 	Version string
@@ -106,8 +104,8 @@ type Options struct {
 	Encoding map[string]encoder.Encoder
 func NewOptions(opts ...Option) Options
 type Reader interface {
-	Merge(...*source.ChangeSet) (*source.ChangeSet, error)
-	Values(*source.ChangeSet) (Values, error)
+	Merge(changes ...*source.ChangeSet) (*source.ChangeSet, error)
+	Values(change *source.ChangeSet) (Values, error)
 	String() string
 type Value interface {
 	Bool(def bool) bool
@@ -117,15 +115,15 @@ type Value interface {
 	Duration(def time.Duration) time.Duration
 	StringSlice(def []string) []string
 	StringMap(def map[string]string) map[string]string
-	Scan(val interface{}) error
+	Scan(val any) error
 	Bytes() []byte
 type Values interface {
 	Bytes() []byte
 	Get(path ...string) Value
 	Set(val any, path ...string) error
 	Del(path ...string)
-	Map() map[string]interface{}
-	Scan(v interface{}) error
+	Map() map[string]any
+	Scan(v any) error
 
 ## github.com/gatework/motor-core/config/reader/json
 func NewReader(opts ...reader.Option) reader.Reader
@@ -140,21 +138,28 @@ type ChangeSet struct {
 	Source    string
 	Timestamp time.Time
 func (c *ChangeSet) Sum() string
+type NoopWatcher struct {
+func NewNoopWatcher() (*NoopWatcher, error)
+func (w *NoopWatcher) Next() (*ChangeSet, error)
+func (w *NoopWatcher) Stop() error
 type Option func(o *Options)
 func WithEncoder(e encoder.Encoder) Option
 type Options struct {
 	Encoder encoder.Encoder
-	Context context.Context
+	FilePath         string
+	ChangeSet        *ChangeSet
+	Prefixes         []string
+	StrippedPrefixes []string
+	IncludeUnset     bool
 func NewOptions(opts ...Option) Options
 type Source interface {
 	Read() (*ChangeSet, error)
-	Write(*ChangeSet) error
+	Write(change *ChangeSet) error
 	Watch() (Watcher, error)
 	String() string
 type Watcher interface {
 	Next() (*ChangeSet, error)
 	Stop() error
-func NewNoopWatcher() (Watcher, error)
 
 ## github.com/gatework/motor-core/config/source/env
 var (
@@ -253,13 +258,13 @@ var (
 	ErrInvalidPrivKey = errors.New("private key invalid")
 	ErrInvalidPubKey = errors.New("public key invalid")
 	IdentityKey = "identity"
-	NiceKey      = "nice"
+	NiceKey = "nice"
 	DataScopeKey = "datascope"
 	RKey = "r"
-	RoleIdKey = "roleid"
+	RoleIDKey = "roleid"
 	RoleKey = "rolekey"
 	RoleNameKey = "rolename"
-	DeptId = "deptId"
+	DeptID = "deptId"
 	DeptName = "deptName"
 func GetToken(c *gin.Context) string
 type GinJWTMiddleware struct {
@@ -268,19 +273,19 @@ type GinJWTMiddleware struct {
 	Key []byte
 	Timeout time.Duration
 	MaxRefresh time.Duration
-	Authenticator func(c *gin.Context) (interface{}, error)
-	Authorizator func(data interface{}, c *gin.Context) bool
-	PayloadFunc func(data interface{}) MapClaims
+	Authenticator func(c *gin.Context) (any, error)
+	Authorizator func(data any, c *gin.Context) bool
+	PayloadFunc func(data any) MapClaims
 	Unauthorized func(*gin.Context, int, string)
 	LoginResponse func(*gin.Context, int, string, time.Time)
 	AntdLoginResponse func(*gin.Context, int, string, time.Time)
 	RefreshResponse func(*gin.Context, int, string, time.Time)
-	IdentityHandler func(*gin.Context) interface{}
+	IdentityHandler func(*gin.Context) any
 	IdentityKey string
 	NiceKey string
 	DataScopeKey string
 	RKey string
-	RoleIdKey string
+	RoleIDKey string
 	RoleKey string
 	RoleNameKey string
 	TokenLookup string
@@ -306,8 +311,8 @@ func (mw *GinJWTMiddleware) ParseToken(c *gin.Context) (*jwt.Token, error)
 func (mw *GinJWTMiddleware) ParseTokenString(token string) (*jwt.Token, error)
 func (mw *GinJWTMiddleware) RefreshHandler(c *gin.Context)
 func (mw *GinJWTMiddleware) RefreshToken(c *gin.Context) (string, time.Time, error)
-func (mw *GinJWTMiddleware) TokenGenerator(data interface{}) (string, time.Time, error)
-type MapClaims map[string]interface{}
+func (mw *GinJWTMiddleware) TokenGenerator(data any) (string, time.Time, error)
+type MapClaims map[string]any
 func ExtractClaims(c *gin.Context) MapClaims
 func ExtractClaimsFromToken(token *jwt.Token) MapClaims
 func (m MapClaims) Int64(key string) (int64, bool)
@@ -315,13 +320,13 @@ func (m MapClaims) Int64(key string) (int64, bool)
 ## github.com/gatework/motor-core/jwtauth/user
 func DepartmentID(c *gin.Context) int
 func DepartmentName(c *gin.Context) string
-func ExtractClaims(c *gin.Context) jwt.MapClaims
+func ExtractClaims(c *gin.Context) jwtauth.MapClaims
 func Get(c *gin.Context, key string) any
+func ID(c *gin.Context) int
+func IDString(c *gin.Context) string
+func Name(c *gin.Context) string
 func RoleID(c *gin.Context) int
 func RoleName(c *gin.Context) string
-func UserID(c *gin.Context) int
-func UserIDString(c *gin.Context) string
-func UserName(c *gin.Context) string
 
 ## github.com/gatework/motor-core/logger
 const (
@@ -329,13 +334,13 @@ const (
 	Red         = "\033[31m"
 	Green       = "\033[32m"
 	Yellow      = "\033[33m"
-	Blue        = "\033[34m" // Caller 路径、GORM 路径
+	Blue        = "\033[34m" // Caller and GORM paths
 	Magenta     = "\033[35m"
 	Cyan        = "\033[36m"
 	White       = "\033[37m"
-	Gray        = "\033[90m" // 次要信息
-	BrightWhite = "\033[97m" // DEBUG 级别
-	BlueBold    = "\033[34;1m" // GORM rows 计数
+	Gray        = "\033[90m" // Secondary details
+	BrightWhite = "\033[97m" // Debug level
+	BlueBold    = "\033[34;1m" // GORM row count
 	MagentaBold = "\033[35;1m"
 	RedBold     = "\033[31;1m" // FATAL/PANIC
 	YellowBold  = "\033[33;1m"
@@ -476,9 +481,9 @@ type CoreConfig struct {
 	CallerSkip int `json:"callerSkip" yaml:"callerSkip"`
 	EnableStacktrace bool `json:"enableStacktrace" yaml:"enableStacktrace"`
 	Name string `json:"name" yaml:"name"`
-	Fields map[string]interface{} `json:"fields" yaml:"fields"`
+	Fields map[string]any `json:"fields" yaml:"fields"`
 type ElasticsearchHook struct {
-func NewElasticsearchHook(client interface{}, index string) *ElasticsearchHook
+func NewElasticsearchHook(client any, index string) *ElasticsearchHook
 func (h *ElasticsearchHook) Fire(entry *logrus.Entry) error
 func (h *ElasticsearchHook) Levels() []logrus.Level
 type Field struct {
@@ -597,7 +602,7 @@ func WithCallerSkipCount(c int) Option
 func WithEnableCaller(enabled bool) Option
 func WithEnableStacktrace(enabled bool) Option
 func WithEncoder(encoder string) Option
-func WithFields(fields map[string]interface{}) Option
+func WithFields(fields map[string]any) Option
 func WithLevel(level Level) Option
 func WithName(name string) Option
 func WithOutput(out io.Writer) Option
@@ -608,7 +613,7 @@ func WithSanitizer(config SanitizerConfig) Option
 func WithStdout(enabled bool) Option
 type Options struct {
 	Level Level
-	Fields map[string]interface{}
+	Fields map[string]any
 	Out io.Writer
 	CallerSkipCount int
 	Async     *AsyncConfig
@@ -728,8 +733,8 @@ func JSONFormat(r Record) string
 func TextFormat(r Record) string
 type FormatFunc func(Record) string
 type Log interface {
-	Read(...ReadOption) ([]Record, error)
-	Write(Record) error
+	Read(opts ...ReadOption) ([]Record, error)
+	Write(record Record) error
 	Stream() (Stream, error)
 type Option func(*Options)
 func Format(f FormatFunc) Option
@@ -749,7 +754,7 @@ type ReadOptions struct {
 type Record struct {
 	Timestamp time.Time `json:"timestamp"`
 	Metadata map[string]string `json:"metadata"`
-	Message interface{} `json:"message"`
+	Message any `json:"message"`
 type Stream interface {
 	Chan() <-chan Record
 	Stop() error
@@ -758,23 +763,23 @@ type Stream interface {
 var Default = &response{}
 func Custom(c *gin.Context, data gin.H)
 func Error(c *gin.Context, code int, err error, msg string)
-func OK(c *gin.Context, data interface{}, msg string)
-func PageOK(c *gin.Context, result interface{}, count int, pageIndex int, pageSize int, msg string)
+func OK(c *gin.Context, data any, msg string)
+func PageOK(c *gin.Context, result any, count int, pageIndex int, pageSize int, msg string)
 type Page struct {
 	Count     int `json:"count"`
 	PageIndex int `json:"pageIndex"`
 	PageSize  int `json:"pageSize"`
 type Response struct {
-	RequestId string `protobuf:"bytes,1,opt,name=requestId,proto3" json:"requestId,omitempty"`
+	RequestID string `protobuf:"bytes,1,opt,name=requestId,proto3" json:"requestId,omitempty"`
 	Code      int32  `protobuf:"varint,2,opt,name=code,proto3" json:"code,omitempty"`
 	Msg       string `protobuf:"bytes,3,opt,name=msg,proto3" json:"msg,omitempty"`
 	Status    string `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
 type Responses interface {
-	SetCode(int32)
-	SetTraceID(string)
-	SetMsg(string)
-	SetData(interface{})
-	SetSuccess(bool)
+	SetCode(code int32)
+	SetTraceID(traceID string)
+	SetMsg(message string)
+	SetData(data any)
+	SetSuccess(success bool)
 	Clone() Responses
 
 ## github.com/gatework/motor-core/response/antd
@@ -786,27 +791,27 @@ const (
 	Page         = "9"
 func Custum(c *gin.Context, data gin.H)
 func Error(c *gin.Context, errCode string, errMsg string, showType string)
-func ListOK(c *gin.Context, result interface{}, total int, current int, pageSize int)
-func OK(c *gin.Context, data interface{})
-func PageOK(c *gin.Context, result interface{}, total int, current int, pageSize int)
-func UpFileOK(c *gin.Context, data interface{})
+func ListOK(c *gin.Context, result any, total int, current int, pageSize int)
+func OK(c *gin.Context, data any)
+func PageOK(c *gin.Context, result any, total int, current int, pageSize int)
+func UpFileOK(c *gin.Context, data any)
 type ListData struct {
-	List     interface{} `json:"list,omitempty"` // response data
-	Total    int         `json:"total,omitempty"`
-	Current  int         `json:"current,omitempty"`
-	PageSize int         `json:"pageSize,omitempty"`
+	List     any `json:"list,omitempty"` // response data
+	Total    int `json:"total,omitempty"`
+	Current  int `json:"current,omitempty"`
+	PageSize int `json:"pageSize,omitempty"`
 type Pages struct {
 	Response
-	Data     interface{} `json:"data,omitempty"` // response data
-	Total    int         `json:"total,omitempty"`
-	Current  int         `json:"current,omitempty"`
-	PageSize int         `json:"pageSize,omitempty"`
+	Data     any `json:"data,omitempty"` // response data
+	Total    int `json:"total,omitempty"`
+	Current  int `json:"current,omitempty"`
+	PageSize int `json:"pageSize,omitempty"`
 type Response struct {
 	Success      bool   `json:"success,omitempty"`      // if request is success
 	ErrorCode    string `json:"errorCode,omitempty"`    // code for errorType
 	ErrorMessage string `json:"errorMessage,omitempty"` // message display to user
 	ShowType     string `json:"showType,omitempty"`     // error display type： 0 silent; 1 message.warn; 2 message.error; 4 notification; 9 page
-	TraceId      string `json:"traceId,omitempty"`      // Convenient for back-end Troubleshooting: unique request ID
+	TraceID      string `json:"traceId,omitempty"`      // Convenient for back-end Troubleshooting: unique request ID
 	Host         string `json:"host,omitempty"`         // onvenient for backend Troubleshooting: host of current access server
 	Status       string `json:"status,omitempty"`
 
@@ -963,9 +968,9 @@ func Permission(tableName string, p *DataPermission, enabled func() bool) func(d
 func PermissionAction(enabled func() bool) gin.HandlerFunc
 type DataPermission struct {
 	DataScope string
-	UserId    int
-	DeptId    int
-	RoleId    int
+	UserID    int
+	DeptID    int
+	RoleID    int
 func GetPermissionFromContext(c *gin.Context) *DataPermission
 
 ## github.com/gatework/motor-core/sdk/contract/app
@@ -983,7 +988,7 @@ type Manifest struct {
 	License string
 
 ## github.com/gatework/motor-core/sdk/contract/dto
-func MakeCondition(q interface{}) func(db *gorm.DB) *gorm.DB
+func MakeCondition(q any) func(db *gorm.DB) *gorm.DB
 func OrderDest(sort string, desc bool) func(db *gorm.DB) *gorm.DB
 func Paginate(pageSize, pageIndex int) func(db *gorm.DB) *gorm.DB
 type AutoForm struct {
@@ -999,49 +1004,49 @@ type AutoForm struct {
 	Span          int     `json:"span"`
 	FormBtns      bool    `json:"formBtns"`
 type Config struct {
-	Label        string        `json:"label"`
-	LabelWidth   interface{}   `json:"labelWidth"`
-	ShowLabel    bool          `json:"showLabel"`
-	ChangeTag    bool          `json:"changeTag"`
-	Tag          string        `json:"tag"`
-	TagIcon      string        `json:"tagIcon"`
-	Required     bool          `json:"required"`
-	Layout       string        `json:"layout"`
-	Span         int           `json:"span"`
-	Document     string        `json:"document"`
-	RegList      []interface{} `json:"regList"`
-	FormId       int           `json:"formId"`
-	RenderKey    int64         `json:"renderKey"`
-	DefaultValue interface{}   `json:"defaultValue"`
-	ShowTip      bool          `json:"showTip,omitempty"`
-	ButtonText   string        `json:"buttonText,omitempty"`
-	FileSize     int           `json:"fileSize,omitempty"`
-	SizeUnit     string        `json:"sizeUnit,omitempty"`
+	Label        string `json:"label"`
+	LabelWidth   any    `json:"labelWidth"`
+	ShowLabel    bool   `json:"showLabel"`
+	ChangeTag    bool   `json:"changeTag"`
+	Tag          string `json:"tag"`
+	TagIcon      string `json:"tagIcon"`
+	Required     bool   `json:"required"`
+	Layout       string `json:"layout"`
+	Span         int    `json:"span"`
+	Document     string `json:"document"`
+	RegList      []any  `json:"regList"`
+	FormID       int    `json:"formId"`
+	RenderKey    int64  `json:"renderKey"`
+	DefaultValue any    `json:"defaultValue"`
+	ShowTip      bool   `json:"showTip,omitempty"`
+	ButtonText   string `json:"buttonText,omitempty"`
+	FileSize     int    `json:"fileSize,omitempty"`
+	SizeUnit     string `json:"sizeUnit,omitempty"`
 type Control interface {
 	Generate() Control
 	Bind(ctx *gin.Context) error
 	GenerateM() (models.ActiveRecord, error)
-	GetID() interface{}
+	GetID() any
 type Field struct {
-	Config        Config      `json:"__config__"`
-	Slot          Slot        `json:"__slot__"`
-	Placeholder   string      `json:"placeholder,omitempty"`
-	Style         Style       `json:"style,omitempty"`
-	Clearable     bool        `json:"clearable,omitempty"`
-	PrefixIcon    string      `json:"prefix-icon,omitempty"`
-	SuffixIcon    string      `json:"suffix-icon,omitempty"`
-	Maxlength     interface{} `json:"maxlength"`
-	ShowWordLimit bool        `json:"show-word-limit,omitempty"`
-	Readonly      bool        `json:"readonly,omitempty"`
-	Disabled      bool        `json:"disabled"`
-	VModel        string      `json:"__vModel__"`
-	Action        string      `json:"action,omitempty"`
-	Accept        string      `json:"accept,omitempty"`
-	Name          string      `json:"name,omitempty"`
-	AutoUpload    bool        `json:"auto-upload,omitempty"`
-	ListType      string      `json:"list-type,omitempty"`
-	Multiple      bool        `json:"multiple,omitempty"`
-	Filterable    bool        `json:"filterable,omitempty"`
+	Config      Config `json:"__config__"`
+	Slot        Slot   `json:"__slot__"`
+	Placeholder string `json:"placeholder,omitempty"`
+	Style         Style  `json:"style"`
+	Clearable     bool   `json:"clearable,omitempty"`
+	PrefixIcon    string `json:"prefix-icon,omitempty"`
+	SuffixIcon    string `json:"suffix-icon,omitempty"`
+	Maxlength     any    `json:"maxlength"`
+	ShowWordLimit bool   `json:"show-word-limit,omitempty"`
+	Readonly      bool   `json:"readonly,omitempty"`
+	Disabled      bool   `json:"disabled"`
+	VModel        string `json:"__vModel__"`
+	Action        string `json:"action,omitempty"`
+	Accept        string `json:"accept,omitempty"`
+	Name          string `json:"name,omitempty"`
+	AutoUpload    bool   `json:"auto-upload,omitempty"`
+	ListType      string `json:"list-type,omitempty"`
+	Multiple      bool   `json:"multiple,omitempty"`
+	Filterable    bool   `json:"filterable,omitempty"`
 type GeneralDelDto struct {
 	ID  int   `uri:"id" json:"id" validate:"required"`
 	IDs []int `json:"ids"`
@@ -1053,7 +1058,7 @@ type Index interface {
 	Bind(ctx *gin.Context) error
 	GetPageIndex() int
 	GetPageSize() int
-	GetNeedSearch() interface{}
+	GetNeedSearch() any
 type ObjectByID struct {
 	ID  int   `uri:"id"`
 	IDs []int `json:"ids"`
@@ -1113,7 +1118,7 @@ type ActiveRecord interface {
 	SetCreateBy(createBy int)
 	SetUpdateBy(updateBy int)
 	Generate() ActiveRecord
-	GetID() interface{}
+	GetID() any
 type BaseUser struct {
 	Username     string `json:"username" gorm:"type:varchar(100);comment:username"`
 	Salt         string `json:"-" gorm:"type:varchar(255);comment:salt;<-"`
@@ -1139,23 +1144,23 @@ type ModelTime struct {
 	UpdatedAt time.Time `json:"updatedAt" gorm:"comment:last updated time"`
 	DeletedAt soft_delete.DeletedAt `json:"-" gorm:"softDelete:milli;index;comment:deletion time"`
 type Page struct {
-	List      interface{} `json:"list"`
-	Count     int         `json:"count"`
-	PageIndex int         `json:"pageIndex"`
-	PageSize  int         `json:"pageSize"`
+	List      any `json:"list"`
+	Count     int `json:"count"`
+	PageIndex int `json:"pageIndex"`
+	PageSize  int `json:"pageSize"`
 type Response struct {
 	Code int `json:"code" example:"200"`
-	Data interface{} `json:"data"`
+	Data any `json:"data"`
 	Msg       string `json:"msg"`
-	RequestId string `json:"requestId"`
+	RequestID string `json:"requestId"`
 func (res *Response) ReturnError(code int) *Response
 func (res *Response) ReturnOK() *Response
 
 ## github.com/gatework/motor-core/sdk/contract/seed
 var ErrNoSeeder = errors.New("seed: no Seeder registered; the host must call seed.RegisterSeeder before any application migration calls SeedMenus")
+func Menus(tx *gorm.DB, appCode string, menus []MenuSpec, apis []APISpec) error
 func RegisterSeeder(s Seeder)
-func SeedMenus(tx *gorm.DB, appCode string, menus []MenuSpec, apis []ApiSpec) error
-type ApiSpec struct {
+type APISpec struct {
 	Code   string
 	Title  string
 	Path   string
@@ -1171,9 +1176,9 @@ type MenuSpec struct {
 	Icon string
 	Permission string
 	Sort int
-	ApiCodes []string
+	APICodes []string
 type Seeder interface {
-	SeedMenus(tx *gorm.DB, appCode string, menus []MenuSpec, apis []ApiSpec) error
+	Menus(tx *gorm.DB, appCode string, menus []MenuSpec, apis []APISpec) error
 
 ## github.com/gatework/motor-core/sdk/pkg
 const (
@@ -1187,47 +1192,46 @@ const (
 	TextWhite
 const (
 	TrafficKey = "X-Request-Id"
-	LoggerKey  = "_go-admin-logger-request"
+	LoggerKey = "_go-admin-logger-request"
 func Assert(condition bool, msg string, code ...int)
 func Black(msg string) string
 func Blue(msg string) string
 func CompareHashAndPassword(e string, p string) (bool, error)
 func Cyan(msg string) string
 func FileCreate(content bytes.Buffer, name string) error
-func FileMonitoringById(ctx context.Context, filePth string, id string, group string, hookfn func(context.Context, string, string, []byte))
 func GenerateRandomKey16() string
 func GenerateRandomKey20() string
 func GenerateRandomKey6() string
-func Get(url string) (string, error)
+func Get(ctx context.Context, url string) (string, error)
 func GetCurrentPath() string
 func GetCurrentTime() time.Time
 func GetCurrentTimeStr() string
 func GetFileSize(filename string) int64
 func GetLocalHost() string
-func GetLocation(ip, key string) string
+func GetLocation(ctx context.Context, ip, key string) string
 func GetORM(c *gin.Context) (*gorm.DB, error)
 func Green(msg string) string
 func HasError(err error, msg string, code ...int)
-func IdsStrToIdsIntGroup(key string, c *gin.Context) []int
-func IdsStrToIdsIntGroupStr(keys string) []int
+func IDsStrToIDsIntGroup(key string, c *gin.Context) []int
+func IDsStrToIDsIntGroupStr(keys string) []int
 func Int64ToString(e int64) string
 func IntToString(e int) string
 func Magenta(msg string) string
 func PathCreate(dir string) error
 func PathExist(addr string) bool
-func Post(url string, data interface{}, contentType string) ([]byte, error)
+func Post(ctx context.Context, url string, data any, contentType string) ([]byte, error)
 func Red(msg string) string
 func RequestID(c *gin.Context) string
 func Round(f float64, n int) float64
 func SetColor(msg string, conf, bg, text int) string
 func SetPassword(password string, salt string) (verify string, err error)
 func StringToInt(e string) (int, error)
-func StructToJsonStr(e interface{}) (string, error)
+func StructToJSONStr(value any) (string, error)
 func UIntToString(e uint) string
 func White(msg string) string
 func Yellow(msg string) string
-type Ids struct {
-	Ids []int
+type IDs struct {
+	IDs []int
 type Mode string
 const (
 	ModeDev  Mode = "dev"     //开发模式
@@ -1236,11 +1240,6 @@ const (
 	Mysql         = "mysql"   //mysql数据库标识
 	Sqlite        = "sqlite3" //sqlite
 func (e Mode) String() string
-type ReplaceHelper struct {
-	Root    string //路径
-	OldText string //需要替换的文本
-	NewText string //新的文本
-func (h *ReplaceHelper) DoWork() error
 
 ## github.com/gatework/motor-core/sdk/pkg/cronjob
 func NewWithSeconds() *cron.Cron
@@ -1262,7 +1261,6 @@ func GetImgType(p string) (string, error)
 func GetSize(f multipart.File) (int, error)
 func GetType(p string) (string, error)
 func GetUUID() string
-func Hmac(data string) string
 func IsNotExistMkDir(src string) error
 func IsStringEmpty(str string) bool
 func MkDir(src string) error
@@ -1270,30 +1268,30 @@ func NotExist(src string) bool
 func Open(name string, flag int, perm os.FileMode) (*os.File, error)
 func PathExists(path string) bool
 func RemoveRepByMap(slc []string) []string
-type APIException struct {
-	Code      int         `json:"code"`
-	Success   bool        `json:"success"`
-	Msg       string      `json:"msg"`
-	Timestamp int64       `json:"timestamp"`
-	Result    interface{} `json:"result"`
-func AuthError(message string) *APIException
-func NotFound() *APIException
-func ParameterError(message string) *APIException
-func ResponseJson(message string, data interface{}, success bool) *APIException
-func ServerError() *APIException
-func UnknownError(message string) *APIException
-func (e *APIException) Error() string
+type APIError struct {
+	Code      int    `json:"code"`
+	Success   bool   `json:"success"`
+	Msg       string `json:"msg"`
+	Timestamp int64  `json:"timestamp"`
+	Result    any    `json:"result"`
+func AuthError(message string) *APIError
+func NotFound() *APIError
+func ParameterError(message string) *APIError
+func ResponseJSON(message string, data any, success bool) *APIError
+func ServerError() *APIError
+func UnknownError(message string) *APIError
+func (e *APIError) Error() string
 type JSONTime struct {
 	time.Time
 func (t JSONTime) MarshalJSON() ([]byte, error)
-func (t *JSONTime) Scan(v interface{}) error
+func (t *JSONTime) Scan(v any) error
 func (t JSONTime) Value() (driver.Value, error)
 
 ## github.com/gatework/motor-core/sdk/pkg/ws
 var (
-	ErrClosed     = errors.New("ws: manager closed")
+	ErrClosed = errors.New("ws: manager closed")
 	ErrNotRunning = errors.New("ws: manager not running")
-	ErrNoClient   = errors.New("ws: client not found")
+	ErrNoClient = errors.New("ws: client not found")
 	ErrSlowClient = errors.New("ws: client send queue full")
 type Manager struct {
 func New(opts ...Option) (*Manager, error)
@@ -1322,10 +1320,10 @@ func New() *Application
 func (a *Application) AddHandler(tenant string, h Handler)
 func (a *Application) AllHandlers() map[string][]Handler
 func (a *Application) App(tenant string) any
-func (e *Application) AppRoutersSealed() bool
+func (a *Application) AppRoutersSealed() bool
 func (a *Application) Apps() map[string]any
-func (e *Application) BeforeSealed() bool
-func (e *Application) BeginShutdown()
+func (a *Application) BeforeSealed() bool
+func (a *Application) BeginShutdown()
 func (a *Application) Cache() storage.Cache
 func (a *Application) Casbin(tenant string) *casbin.SyncedEnforcer
 func (a *Application) CasbinExclude(tenant string) any
@@ -1339,24 +1337,24 @@ func (a *Application) Databases() map[string]*gorm.DB
 func (a *Application) DefaultTenant() string
 func (a *Application) Enforcers() map[string]*casbin.SyncedEnforcer
 func (a *Application) Engine() http.Handler
-func (e *Application) GetHandlerFunc(key string) (gin.HandlerFunc, bool)
+func (a *Application) GetHandlerFunc(key string) (gin.HandlerFunc, bool)
 func (a *Application) Handlers(tenant string) []Handler
 func (a *Application) Logger() logger.Logger
 func (a *Application) Middleware(k string) any
 func (a *Application) Middlewares() map[string]any
-func (e *Application) PhaseSealed(p Phase) bool
+func (a *Application) PhaseSealed(p Phase) bool
 func (a *Application) Queue() storage.Queue
 func (a *Application) QueueForTenant(tenant string) *Queue
 func (a *Application) Routers() []Router
-func (e *Application) RunAppRouters()
-func (e *Application) RunBefore()
-func (e *Application) RunPhase(p Phase)
-func (e *Application) RunShutdown(ctx context.Context) error
+func (a *Application) RunAppRouters()
+func (a *Application) RunBefore()
+func (a *Application) RunPhase(p Phase)
+func (a *Application) RunShutdown(ctx context.Context) error
 func (a *Application) SetApp(tenant string, v any)
-func (e *Application) SetAppRouters(appRouters func())
-func (e *Application) SetAppRoutersWith(appRouters func(), opts ...CallbackOption)
-func (e *Application) SetBefore(f func())
-func (e *Application) SetBeforeWith(f func(), opts ...CallbackOption)
+func (a *Application) SetAppRouters(appRouters func())
+func (a *Application) SetAppRoutersWith(appRouters func(), opts ...CallbackOption)
+func (a *Application) SetBefore(f func())
+func (a *Application) SetBeforeWith(f func(), opts ...CallbackOption)
 func (a *Application) SetCache(v storage.Cache)
 func (a *Application) SetCasbin(tenant string, v *casbin.SyncedEnforcer)
 func (a *Application) SetCasbinExclude(tenant string, v any)
@@ -1368,9 +1366,9 @@ func (a *Application) SetDefaultTenant(v string)
 func (a *Application) SetEngine(v http.Handler)
 func (a *Application) SetLogger(v logger.Logger)
 func (a *Application) SetMiddleware(k string, v any)
-func (e *Application) SetPhase(p Phase, f func(), opts ...CallbackOption)
+func (a *Application) SetPhase(p Phase, f func(), opts ...CallbackOption)
 func (a *Application) SetQueue(v storage.Queue)
-func (e *Application) SetShutdown(f func(context.Context), opts ...CallbackOption)
+func (a *Application) SetShutdown(f func(context.Context), opts ...CallbackOption)
 type CallbackOption func(*callbackConfig)
 func WithFatal() CallbackOption
 func WithName(name string) CallbackOption
@@ -1400,7 +1398,8 @@ type Service struct {
 ## github.com/gatework/motor-core/server
 type Option func(*options)
 func WithShutdownTimeout(d time.Duration) Option
-type Runnable interface{ Run(context.Context) error }
+type Runnable interface {
+	Run(ctx context.Context) error
 type Server struct {
 func New(opts ...Option) *Server
 func (s *Server) Add(name string, r Runnable) error
@@ -1465,7 +1464,7 @@ func (m *Memory) Expire(ctx context.Context, key string, ttl time.Duration) erro
 func (m *Memory) Get(ctx context.Context, key string) (string, error)
 func (m *Memory) Incr(ctx context.Context, key string, delta int64) (int64, error)
 func (m *Memory) Set(ctx context.Context, key, val string, ttl time.Duration) error
-func (c *Memory) String() string
+func (m *Memory) String() string
 type Options struct {
 	SweepInterval time.Duration
 	MaxEntries int
@@ -1514,24 +1513,22 @@ type QueueOptions struct {
 	Batch int64
 
 ## github.com/gatework/motor-core/tools/database
-type Configure interface {
-	Init(*gorm.Config, func(string) gorm.Dialector) (*gorm.DB, error)
+type DBConfig struct {
 func NewConfigure(
 	dsn string,
 	maxIdleConns,
 	maxOpenConns,
 	connMaxIdleTime,
 	connMaxLifetime int,
-	registers []ResolverConfigure) Configure
-type DBConfig struct {
+	registers []ResolverConfigure) *DBConfig
 func (e *DBConfig) Init(config *gorm.Config, open func(string) gorm.Dialector) (*gorm.DB, error)
 type DBResolverConfig struct {
+func NewResolverConfigure(sources, replicas []string, policy string, tables []string) *DBResolverConfig
 func (e *DBResolverConfig) Init(
 	register *dbresolver.DBResolver,
 	open func(string) gorm.Dialector) *dbresolver.DBResolver
 type ResolverConfigure interface {
-	Init(*dbresolver.DBResolver, func(string) gorm.Dialector) *dbresolver.DBResolver
-func NewResolverConfigure(sources, replicas []string, policy string, tables []string) ResolverConfigure
+	Init(register *dbresolver.DBResolver, open func(string) gorm.Dialector) *dbresolver.DBResolver
 
 ## github.com/gatework/motor-core/tools/gorm/gormlog
 const (
@@ -1553,7 +1550,7 @@ func New(config logger.Config) logger.Interface
 func ParseAcceptLanguage(header string, supportedLanguages []string) []string
 
 ## github.com/gatework/motor-core/tools/poster
-func GetImage(src string) (m image.Image, err error)
+func GetImage(ctx context.Context, src string) (image.Image, error)
 func GetQRImage(url string, level qrcode.RecoveryLevel, size int) (image.Image, error)
 func LoadTextType(path string) (*truetype.Font, error)
 func Merge(png draw.Image, merged *os.File) error
@@ -1600,7 +1597,7 @@ type Condition struct {
 	Where []Clause
 	Or    []Clause
 	Order []string
-	Join  []Join
+	Join []Join
 func Resolve(driver string, q any) (Condition, error)
 type Join struct {
 	SQL       string
@@ -1619,5 +1616,5 @@ func GetHeaderFirst(ctx context.Context, key string) string
 func GetRequestID(ctx context.Context) string
 func GetUsername(ctx context.Context) string
 func NewRequestID() string
-func WriteXlsx(sheet string, records interface{}) *excelize.File
+func WriteXlsx(sheet string, records any) *excelize.File
 

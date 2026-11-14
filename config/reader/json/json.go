@@ -1,3 +1,4 @@
+// Package json decodes configuration values into independent JSON trees.
 package json
 
 import (

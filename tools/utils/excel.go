@@ -7,6 +7,7 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
+// Cols defines the supported spreadsheet column labels.
 var Cols = []string{"", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"}
 
 // WriteXlsx 填充excel
@@ -24,12 +25,12 @@ func WriteXlsx(sheet string, records any) *excelize.File {
 	}
 
 	s := reflect.ValueOf(records)
-	for i := 0; i < s.Len(); i++ {
+	for i := range s.Len() {
 		elem := s.Index(i).Interface()
 		elemType := reflect.TypeOf(elem)
 		elemValue := reflect.ValueOf(elem)
 		index := -1
-		for j := 0; j < elemType.NumField(); j++ {
+		for j := range elemType.NumField() {
 			field := elemType.Field(j)
 			tag := field.Tag.Get("xlsx")
 			name := tag
@@ -58,6 +59,7 @@ func WriteXlsx(sheet string, records any) *excelize.File {
 	return xlsx
 }
 
+// ConvertNumToChars converts a positive spreadsheet column number to its letter label.
 func ConvertNumToChars(num int) (string, error) {
 	var cols string
 	v := num + 1

@@ -7,6 +7,7 @@ import (
 // FieldType 字段类型（零分配设计）
 type FieldType uint8
 
+// Field types select the representation used by each structured entry field.
 const (
 	FieldTypeAny FieldType = iota
 	FieldTypeString

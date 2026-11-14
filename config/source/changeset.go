@@ -1,13 +1,12 @@
 package source
 
 import (
-	"crypto/md5"
-	"fmt"
+	"crypto/sha256"
+	"encoding/hex"
 )
 
-// Sum returns the md5 checksum of the ChangeSet data
+// Sum returns the SHA-256 content identity of the ChangeSet data.
 func (c *ChangeSet) Sum() string {
-	h := md5.New()
-	h.Write(c.Data)
-	return fmt.Sprintf("%x", h.Sum(nil))
+	digest := sha256.Sum256(c.Data)
+	return hex.EncodeToString(digest[:])
 }

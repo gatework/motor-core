@@ -5,23 +5,23 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/smartystreets/goconvey/convey"
+	"github.com/smartystreets/goconvey/convey"
 )
 
 type ApplicationQuery struct {
-	Id       string    `search:"type:icontains;column:id;table:receipt" form:"id"`
-	Domain   string    `search:"type:icontains;column:domain;table:receipt" form:"domain"`
-	Version  string    `search:"type:exact;column:version;table:receipt" form:"version"`
-	Status   []int     `search:"type:in;column:status;table:receipt" form:"status"`
-	Start    time.Time `search:"type:gte;column:created_at;table:receipt" form:"start"`
-	End      time.Time `search:"type:lte;column:created_at;table:receipt" form:"end"`
 	TestJoin `search:"type:left;on:id:receipt_id;table:receipt_goods;join:receipts"`
-	NotNeed  string `search:"-"`
 	ApplicationOrder
+	ID      string    `search:"type:icontains;column:id;table:receipt" form:"id"`
+	Domain  string    `search:"type:icontains;column:domain;table:receipt" form:"domain"`
+	Version string    `search:"type:exact;column:version;table:receipt" form:"version"`
+	Status  []int     `search:"type:in;column:status;table:receipt" form:"status"`
+	Start   time.Time `search:"type:gte;column:created_at;table:receipt" form:"start"`
+	End     time.Time `search:"type:lte;column:created_at;table:receipt" form:"end"`
+	NotNeed string    `search:"-"`
 }
 
 type ApplicationOrder struct {
-	IdOrder string `search:"type:order;column:id;table:receipt" form:"id_order"`
+	IDOrder string `search:"type:order;column:id;table:receipt" form:"id_order"`
 }
 
 type TestJoin struct {
@@ -29,16 +29,16 @@ type TestJoin struct {
 }
 
 func TestResolveSearchQuery(t *testing.T) {
-	// Only pass t into top-level Convey calls
-	Convey("Given some integer with a starting value", t, func() {
+	// Only pass t into top-level convey.Convey calls
+	convey.Convey("Given some integer with a starting value", t, func() {
 		d := ApplicationQuery{
-			Id:             "aaa",
+			ID:             "aaa",
 			Domain:         "bbb",
 			Version:        "ccc",
 			Status:         []int{1, 2},
 			Start:          time.Now().Add(-8 * time.Hour),
 			End:            time.Now(),
-			IdOrder:        "desc",
+			IDOrder:        "desc",
 			PaymentAccount: "1212",
 		}
 		condition := mustResolve("mysql", d)
@@ -46,8 +46,8 @@ func TestResolveSearchQuery(t *testing.T) {
 	})
 }
 
-// JsonContainsQuery 用于覆盖 json_contains / json_contains_or_null 两种 type
-type JsonContainsQuery struct {
+// JSONContainsQuery covers nullable and non-nullable JSON filters.
+type JSONContainsQuery struct {
 	// json_contains：精确包含
 	AgentCodeStrict string `search:"type:json_contains;column:agent_codes;table:tool_script_templates" form:"agentCodeStrict"`
 	// json_contains_or_null：三态白名单
@@ -57,127 +57,127 @@ type JsonContainsQuery struct {
 }
 
 func TestJsonContains_MySQLZeroValueSkip(t *testing.T) {
-	Convey("零值字段跳过：所有 string 都为空，不应生成任何 WHERE", t, func() {
-		q := JsonContainsQuery{}
+	convey.Convey("Zero fields produce no WHERE clauses", t, func() {
+		q := JSONContainsQuery{}
 		cond := mustResolve(MySQL, q)
 
-		So(len(cond.Where), ShouldEqual, 0)
+		convey.So(len(cond.Where), convey.ShouldEqual, 0)
 	})
 }
 
 func TestJsonContains_MySQLSQLCorrectness(t *testing.T) {
-	Convey("MySQL 分支：json_contains 生成 JSON_CONTAINS(col, JSON_QUOTE(?))", t, func() {
-		q := JsonContainsQuery{AgentCodeStrict: "ai-coder"}
+	convey.Convey("MySQL JSON filter uses JSON_CONTAINS", t, func() {
+		q := JSONContainsQuery{AgentCodeStrict: "ai-coder"}
 		cond := mustResolve(MySQL, q)
 
 		expected := "JSON_CONTAINS(`tool_script_templates`.`agent_codes`, JSON_QUOTE(?))"
 		_, exist := cond.Where[expected]
-		So(exist, ShouldBeTrue)
-		So(cond.Where[expected], ShouldResemble, []any{"ai-coder"})
+		convey.So(exist, convey.ShouldBeTrue)
+		convey.So(cond.Where[expected], convey.ShouldResemble, []any{"ai-coder"})
 	})
 
-	Convey("MySQL 分支：json_contains_or_null 生成三态 SQL", t, func() {
-		q := JsonContainsQuery{AgentCodeWhitelist: "ai-reviewer"}
+	convey.Convey("MySQL nullable JSON filter includes all three states", t, func() {
+		q := JSONContainsQuery{AgentCodeWhitelist: "ai-reviewer"}
 		cond := mustResolve(MySQL, q)
 
 		expected := "(`tool_script_templates`.`agent_codes` IS NULL OR " +
 			"`tool_script_templates`.`agent_codes` = JSON_ARRAY() OR " +
 			"JSON_CONTAINS(`tool_script_templates`.`agent_codes`, JSON_QUOTE(?)))"
 		_, exist := cond.Where[expected]
-		So(exist, ShouldBeTrue)
-		So(cond.Where[expected], ShouldResemble, []any{"ai-reviewer"})
+		convey.So(exist, convey.ShouldBeTrue)
+		convey.So(cond.Where[expected], convey.ShouldResemble, []any{"ai-reviewer"})
 	})
 }
 
 func TestJsonContains_PostgresSQLCorrectness(t *testing.T) {
-	Convey("Postgres 分支：json_contains 生成 col @> ?::jsonb", t, func() {
-		q := JsonContainsQuery{AgentCodeStrict: "ai-coder"}
+	convey.Convey("Postgres JSON filter uses containment", t, func() {
+		q := JSONContainsQuery{AgentCodeStrict: "ai-coder"}
 		cond := mustResolve(Postgres, q)
 
 		expected := "tool_script_templates.agent_codes @> ?::jsonb"
 		args, exist := cond.Where[expected]
-		So(exist, ShouldBeTrue)
+		convey.So(exist, convey.ShouldBeTrue)
 		// 标量字符串 → JSON 字面量 "ai-coder"
-		So(args, ShouldResemble, []any{`"ai-coder"`})
+		convey.So(args, convey.ShouldResemble, []any{`"ai-coder"`})
 	})
 
-	Convey("Postgres 分支：json_contains_or_null 生成三态 SQL", t, func() {
-		q := JsonContainsQuery{AgentCodeWhitelist: "ai-reviewer"}
+	convey.Convey("Postgres nullable JSON filter includes all three states", t, func() {
+		q := JSONContainsQuery{AgentCodeWhitelist: "ai-reviewer"}
 		cond := mustResolve(Postgres, q)
 
 		expected := "(tool_script_templates.agent_codes IS NULL OR " +
 			"tool_script_templates.agent_codes = '[]'::jsonb OR " +
 			"tool_script_templates.agent_codes @> ?::jsonb)"
 		args, exist := cond.Where[expected]
-		So(exist, ShouldBeTrue)
-		So(args, ShouldResemble, []any{`"ai-reviewer"`})
+		convey.So(exist, convey.ShouldBeTrue)
+		convey.So(args, convey.ShouldResemble, []any{`"ai-reviewer"`})
 	})
 }
 
 func TestJsonContains_CoexistWithOtherTypes(t *testing.T) {
-	Convey("与 exact 等其他 type 共存：均生成 WHERE，互不冲突", t, func() {
-		q := JsonContainsQuery{
+	convey.Convey("JSON and exact filters produce independent clauses", t, func() {
+		q := JSONContainsQuery{
 			AgentCodeStrict:    "a1",
 			AgentCodeWhitelist: "a2",
 			Name:               "tpl-x",
 		}
 		cond := mustResolve(MySQL, q)
 
-		So(len(cond.Where), ShouldEqual, 3)
+		convey.So(len(cond.Where), convey.ShouldEqual, 3)
 
 		_, hasStrict := cond.Where["JSON_CONTAINS(`tool_script_templates`.`agent_codes`, JSON_QUOTE(?))"]
-		So(hasStrict, ShouldBeTrue)
+		convey.So(hasStrict, convey.ShouldBeTrue)
 
 		_, hasWhitelist := cond.Where["(`tool_script_templates`.`agent_codes` IS NULL OR "+
 			"`tool_script_templates`.`agent_codes` = JSON_ARRAY() OR "+
 			"JSON_CONTAINS(`tool_script_templates`.`agent_codes`, JSON_QUOTE(?)))"]
-		So(hasWhitelist, ShouldBeTrue)
+		convey.So(hasWhitelist, convey.ShouldBeTrue)
 
 		_, hasExact := cond.Where["`tool_script_templates`.`name` = ?"]
-		So(hasExact, ShouldBeTrue)
+		convey.So(hasExact, convey.ShouldBeTrue)
 	})
 }
 
 func TestJsonContains_BuildClauseHelpers(t *testing.T) {
-	Convey("BuildJSONContainsClause MySQL", t, func() {
+	convey.Convey("BuildJSONContainsClause MySQL", t, func() {
 		sql, args, err := BuildJSONContainsClause(MySQL, "agent_codes", "ai-coder")
-		So(err, ShouldBeNil)
-		So(sql, ShouldEqual, "JSON_CONTAINS(agent_codes, JSON_QUOTE(?))")
-		So(args, ShouldResemble, []any{"ai-coder"})
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(sql, convey.ShouldEqual, "JSON_CONTAINS(agent_codes, JSON_QUOTE(?))")
+		convey.So(args, convey.ShouldResemble, []any{"ai-coder"})
 	})
 
-	Convey("BuildJSONContainsClause Postgres", t, func() {
+	convey.Convey("BuildJSONContainsClause Postgres", t, func() {
 		sql, args, err := BuildJSONContainsClause(Postgres, "agent_codes", "ai-coder")
-		So(err, ShouldBeNil)
-		So(sql, ShouldEqual, "agent_codes @> ?::jsonb")
-		So(args, ShouldResemble, []any{`"ai-coder"`})
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(sql, convey.ShouldEqual, "agent_codes @> ?::jsonb")
+		convey.So(args, convey.ShouldResemble, []any{`"ai-coder"`})
 	})
 
-	Convey("BuildJSONContainsOrNullClause MySQL（白名单三态）", t, func() {
+	convey.Convey("MySQL nullable JSON clause", t, func() {
 		sql, args, err := BuildJSONContainsOrNullClause(MySQL, "agent_codes", "ai-coder")
-		So(err, ShouldBeNil)
-		So(sql, ShouldEqual, "(agent_codes IS NULL OR agent_codes = JSON_ARRAY() OR JSON_CONTAINS(agent_codes, JSON_QUOTE(?)))")
-		So(args, ShouldResemble, []any{"ai-coder"})
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(sql, convey.ShouldEqual, "(agent_codes IS NULL OR agent_codes = JSON_ARRAY() OR JSON_CONTAINS(agent_codes, JSON_QUOTE(?)))")
+		convey.So(args, convey.ShouldResemble, []any{"ai-coder"})
 	})
 
-	Convey("BuildJSONContainsOrNullClause Postgres（白名单三态）", t, func() {
+	convey.Convey("Postgres nullable JSON clause", t, func() {
 		sql, args, err := BuildJSONContainsOrNullClause(Postgres, "agent_codes", "ai-coder")
-		So(err, ShouldBeNil)
-		So(sql, ShouldEqual, "(agent_codes IS NULL OR agent_codes = '[]'::jsonb OR agent_codes @> ?::jsonb)")
-		So(args, ShouldResemble, []any{`"ai-coder"`})
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(sql, convey.ShouldEqual, "(agent_codes IS NULL OR agent_codes = '[]'::jsonb OR agent_codes @> ?::jsonb)")
+		convey.So(args, convey.ShouldResemble, []any{`"ai-coder"`})
 	})
 
-	Convey("BuildJSONContainsOrNullClause 支持表前缀（如 t.agent_codes）", t, func() {
+	convey.Convey("Nullable JSON clause supports a table prefix", t, func() {
 		sql, args, err := BuildJSONContainsOrNullClause(MySQL, "t.agent_codes", "ai-coder")
-		So(err, ShouldBeNil)
-		So(sql, ShouldEqual, "(t.agent_codes IS NULL OR t.agent_codes = JSON_ARRAY() OR JSON_CONTAINS(t.agent_codes, JSON_QUOTE(?)))")
-		So(args, ShouldResemble, []any{"ai-coder"})
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(sql, convey.ShouldEqual, "(t.agent_codes IS NULL OR t.agent_codes = JSON_ARRAY() OR JSON_CONTAINS(t.agent_codes, JSON_QUOTE(?)))")
+		convey.So(args, convey.ShouldResemble, []any{"ai-coder"})
 	})
 
-	Convey("默认驱动（空字符串）走 MySQL 语法", t, func() {
+	convey.Convey("Empty driver defaults to MySQL syntax", t, func() {
 		sql, _, err := BuildJSONContainsClause("", "agent_codes", "x")
-		So(err, ShouldBeNil)
-		So(sql, ShouldEqual, "JSON_CONTAINS(agent_codes, JSON_QUOTE(?))")
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(sql, convey.ShouldEqual, "JSON_CONTAINS(agent_codes, JSON_QUOTE(?))")
 	})
 }
 

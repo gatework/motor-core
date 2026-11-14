@@ -1,3 +1,4 @@
+// Package config validates and publishes application settings snapshots.
 package config
 
 import (
@@ -43,7 +44,7 @@ type publishedSettings struct {
 
 var current atomic.Pointer[publishedSettings]
 
-// Current returns a copy of the last successfully loaded settings. The caller
+// Current returns a cloned of the last successfully loaded settings. The caller
 // owns the result, including maps, slices, and optional configuration sections.
 func Current() *Settings {
 	snapshot := current.Load()
@@ -54,34 +55,34 @@ func Current() *Settings {
 }
 
 func cloneSettings(settings *Settings) *Settings {
-	copy := *settings
-	copy.Settings.Database = cloneDatabase(settings.Settings.Database)
-	copy.Settings.Databases = make(map[string]Database, len(settings.Settings.Databases))
+	cloned := *settings
+	cloned.Settings.Database = cloneDatabase(settings.Settings.Database)
+	cloned.Settings.Databases = make(map[string]Database, len(settings.Settings.Databases))
 	for name, db := range settings.Settings.Databases {
-		copy.Settings.Databases[name] = cloneDatabase(db)
+		cloned.Settings.Databases[name] = cloneDatabase(db)
 	}
-	copy.Settings.Extend = make(map[string]json.RawMessage, len(settings.Settings.Extend))
+	cloned.Settings.Extend = make(map[string]json.RawMessage, len(settings.Settings.Extend))
 	for name, data := range settings.Settings.Extend {
-		copy.Settings.Extend[name] = bytes.Clone(data)
+		cloned.Settings.Extend[name] = bytes.Clone(data)
 	}
 	if rotation := settings.Settings.Logger.Rotation; rotation != nil {
 		value := *rotation
-		copy.Settings.Logger.Rotation = &value
+		cloned.Settings.Logger.Rotation = &value
 	}
-	copy.Settings.Cache.Redis = cloneRedis(settings.Settings.Cache.Redis)
+	cloned.Settings.Cache.Redis = cloneRedis(settings.Settings.Cache.Redis)
 	if settings.Settings.Cache.Memory != nil {
-		copy.Settings.Cache.Memory = &CacheMemory{}
+		cloned.Settings.Cache.Memory = &CacheMemory{}
 	}
 	if redis := settings.Settings.Queue.Redis; redis != nil {
 		value := *redis
 		value.RedisOptions = *cloneRedis(&redis.RedisOptions)
-		copy.Settings.Queue.Redis = &value
+		cloned.Settings.Queue.Redis = &value
 	}
 	if memory := settings.Settings.Queue.Memory; memory != nil {
 		value := *memory
-		copy.Settings.Queue.Memory = &value
+		cloned.Settings.Queue.Memory = &value
 	}
-	return &copy
+	return &cloned
 }
 
 func cloneDatabase(db Database) Database {
@@ -98,53 +99,12 @@ func cloneRedis(redis *RedisOptions) *RedisOptions {
 	if redis == nil {
 		return nil
 	}
-	copy := *redis
+	cloned := *redis
 	if redis.TLS != nil {
 		tls := *redis.TLS
-		copy.TLS = &tls
+		cloned.TLS = &tls
 	}
-	return &copy
-}
-
-func (c *Config) multiDatabase() {
-	if len(c.Databases) == 0 {
-		c.Databases = map[string]Database{"*": c.Database}
-		return
-	}
-	if _, wildcard := c.Databases["*"]; wildcard && len(c.Databases) > 1 {
-		others := make([]string, 0, len(c.Databases)-1)
-		for name := range c.Databases {
-			if name != "*" {
-				others = append(others, name)
-			}
-		}
-		sort.Strings(others)
-		slog.Warn("config: wildcard database hides per-tenant entries", "ignored", others)
-	}
-}
-
-func (s *Settings) validate() error {
-	app := s.Settings.Application
-	if app.Port < 0 || app.Port > 65535 {
-		return errors.New("config: application port must be between 0 and 65535")
-	}
-	if app.ReadTimeout < 0 || app.WriterTimeout < 0 {
-		return errors.New("config: application timeouts cannot be negative")
-	}
-	if s.Settings.JWT.Timeout < 0 || s.Settings.JWT.MaxRefresh < 0 {
-		return errors.New("config: jwt durations cannot be negative")
-	}
-	if err := s.Settings.Logger.validate(); err != nil {
-		return err
-	}
-	for _, redis := range []*RedisOptions{s.Settings.Cache.Redis, queueRedis(s.Settings.Queue.Redis)} {
-		if redis != nil {
-			if _, err := redis.Options(); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	return &cloned
 }
 
 func queueRedis(q *RedisQueue) *RedisOptions {
@@ -213,6 +173,58 @@ func Setup(ctx context.Context, s source.Source, options Options) (*Watcher, err
 	return w, nil
 }
 
+// Close stops source watchers and waits for the active reload callback.
+func (w *Watcher) Close() error {
+	w.once.Do(func() {
+		w.cancel()
+		_ = w.watch.Stop()
+		w.closeErr = w.loader.Close()
+	})
+	<-w.done
+	return w.closeErr
+}
+
+func (c *Config) multiDatabase() {
+	if len(c.Databases) == 0 {
+		c.Databases = map[string]Database{"*": c.Database}
+		return
+	}
+	if _, wildcard := c.Databases["*"]; wildcard && len(c.Databases) > 1 {
+		others := make([]string, 0, len(c.Databases)-1)
+		for name := range c.Databases {
+			if name != "*" {
+				others = append(others, name)
+			}
+		}
+		sort.Strings(others)
+		slog.Warn("config: wildcard database hides per-tenant entries", "ignored", others)
+	}
+}
+
+func (s *Settings) validate() error {
+	app := s.Settings.Application
+	if app.Port < 0 || app.Port > 65535 {
+		return errors.New("config: application port must be between 0 and 65535")
+	}
+	if app.ReadTimeout < 0 || app.WriterTimeout < 0 {
+		return errors.New("config: application timeouts cannot be negative")
+	}
+	if s.Settings.JWT.Timeout < 0 || s.Settings.JWT.MaxRefresh < 0 {
+		return errors.New("config: jwt durations cannot be negative")
+	}
+	if err := s.Settings.Logger.validate(); err != nil {
+		return err
+	}
+	for _, redis := range []*RedisOptions{s.Settings.Cache.Redis, queueRedis(s.Settings.Queue.Redis)} {
+		if redis != nil {
+			if _, err := redis.Options(); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (w *Watcher) apply(ctx context.Context, snapshot *loader.Snapshot) error {
 	values, err := jsonreader.NewReader().Values(snapshot.ChangeSet)
 	if err != nil {
@@ -278,14 +290,4 @@ func (w *Watcher) run(ctx context.Context) {
 			slog.ErrorContext(ctx, "config: rejected reload", "error", err)
 		}
 	}
-}
-
-func (w *Watcher) Close() error {
-	w.once.Do(func() {
-		w.cancel()
-		_ = w.watch.Stop()
-		w.closeErr = w.loader.Close()
-	})
-	<-w.done
-	return w.closeErr
 }

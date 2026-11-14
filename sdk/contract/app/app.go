@@ -7,7 +7,7 @@
 // name, version, author, or dependency list recorded anywhere.
 //
 // Code is shared with sdk/contract/migration.ForApp and
-// sdk/contract/seed.SeedMenus: one application, one code, normalized the
+// sdk/contract/seed.Menus: one application, one code, normalized the
 // same way (migration.NormalizeAppCode) so a string typed on a CLI flag
 // matches what all three registries were called with.
 //
@@ -26,11 +26,11 @@ import (
 )
 
 // Manifest is what an application declares about itself once, at process
-// init(), independently of how many migration files or seed.SeedMenus
+// init(), independently of how many migration files or seed.Menus
 // calls it makes.
 type Manifest struct {
 	// Code is the same identifier passed to migration.ForApp(code) and
-	// seed.SeedMenus(tx, appCode, ...). Register normalizes it the same way
+	// seed.Menus(tx, appCode, ...). Register normalizes it the same way
 	// migration.ForApp does, so all three registries agree on one spelling
 	// regardless of the case or whitespace the caller wrote it with.
 	Code string

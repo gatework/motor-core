@@ -14,21 +14,21 @@ import (
 
 // redisURL is where the tests look for a server. CI provides one through a
 // service container; locally the tests skip unless REDIS_URL is set.
-func redisURL(t testing.TB) string {
-	t.Helper()
+func redisURL(tb testing.TB) string {
+	tb.Helper()
 
 	url := os.Getenv("REDIS_URL")
 	if url == "" {
-		t.Skip("REDIS_URL is not set; skipping the Redis conformance suite")
+		tb.Skip("REDIS_URL is not set; skipping the Redis conformance suite")
 	}
 	return url
 }
 
-func redisOptions(t testing.TB, url string) *goredis.Options {
-	t.Helper()
+func redisOptions(tb testing.TB, url string) *goredis.Options {
+	tb.Helper()
 	opts, err := goredis.ParseURL(url)
 	if err != nil {
-		t.Fatalf("parse REDIS_URL: %v", err)
+		tb.Fatalf("parse REDIS_URL: %v", err)
 	}
 	return opts
 }
@@ -64,6 +64,7 @@ func TestRedisConformance(t *testing.T) {
 	admin := adminClient(t, url)
 
 	cachetest.Run(t, func(t *testing.T) storage.Cache {
+		t.Helper()
 		// Each case starts from an empty keyspace, otherwise counters and
 		// expiry assertions leak into one another.
 		flush(t, admin)

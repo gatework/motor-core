@@ -6,21 +6,23 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// IdsStrToIdsIntGroup 获取URL中批量id并解析
-func IdsStrToIdsIntGroup(key string, c *gin.Context) []int {
-	return IdsStrToIdsIntGroupStr(c.Param(key))
+// IDsStrToIDsIntGroup parses a comma-separated list of IDs.
+func IDsStrToIDsIntGroup(key string, c *gin.Context) []int {
+	return IDsStrToIDsIntGroupStr(c.Param(key))
 }
 
-type Ids struct {
-	Ids []int
+// IDs holds a set of integer identifiers.
+type IDs struct {
+	IDs []int
 }
 
-func IdsStrToIdsIntGroupStr(keys string) []int {
-	IDS := make([]int, 0)
+// IDsStrToIDsIntGroupStr parses a comma-separated identifier list.
+func IDsStrToIDsIntGroupStr(keys string) []int {
+	parsed := make([]int, 0)
 	ids := strings.Split(keys, ",")
 	for i := range ids {
 		ID, _ := StringToInt(ids[i])
-		IDS = append(IDS, ID)
+		parsed = append(parsed, ID)
 	}
-	return IDS
+	return parsed
 }

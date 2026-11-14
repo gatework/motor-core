@@ -1,3 +1,4 @@
+// Package storage defines cache and queue contracts shared by backends.
 package storage
 
 import (
@@ -70,8 +71,6 @@ type prefixedCache struct {
 	prefix string
 }
 
-func (p *prefixedCache) key(k string) string { return p.prefix + k }
-
 func (p *prefixedCache) Get(ctx context.Context, key string) (string, error) {
 	return p.inner.Get(ctx, p.key(key))
 }
@@ -97,3 +96,5 @@ func (p *prefixedCache) Expire(ctx context.Context, key string, ttl time.Duratio
 }
 
 func (p *prefixedCache) Close() error { return p.inner.Close() }
+
+func (p *prefixedCache) key(k string) string { return p.prefix + k }

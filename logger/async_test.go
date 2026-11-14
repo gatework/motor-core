@@ -188,7 +188,7 @@ func BenchmarkAsyncLogger(b *testing.B) {
 	asyncLogger := NewAsyncLogger(baseLogger, DefaultAsyncConfig)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		asyncLogger.Log(context.Background(), InfoLevel, "benchmark message")
 	}
 	b.StopTimer()
@@ -209,7 +209,7 @@ func BenchmarkAsyncLogger_vs_Sync(b *testing.B) {
 		)
 
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for range b.N {
 			logger.Log(context.Background(), InfoLevel, "sync message")
 		}
 	})
@@ -223,7 +223,7 @@ func BenchmarkAsyncLogger_vs_Sync(b *testing.B) {
 		asyncLogger := NewAsyncLogger(baseLogger, DefaultAsyncConfig)
 
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for range b.N {
 			asyncLogger.Log(context.Background(), InfoLevel, "async message")
 		}
 		b.StopTimer()

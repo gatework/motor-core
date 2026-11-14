@@ -11,6 +11,7 @@ import (
 
 func TestMemCacheConformance(t *testing.T) {
 	cachetest.Run(t, func(t *testing.T) storage.Cache {
+		t.Helper()
 		// No sweeper: the suite asserts lazy expiry, which must hold on its own.
 		return cache.New(cache.Options{SweepInterval: 0})
 	})
@@ -18,6 +19,7 @@ func TestMemCacheConformance(t *testing.T) {
 
 func TestMemCacheWithSweeperConformance(t *testing.T) {
 	cachetest.Run(t, func(t *testing.T) storage.Cache {
+		t.Helper()
 		return cache.New(cache.Options{SweepInterval: time.Minute})
 	})
 }

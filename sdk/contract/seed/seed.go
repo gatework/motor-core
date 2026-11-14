@@ -74,16 +74,16 @@ type MenuSpec struct {
 	Permission string
 	// Sort orders siblings under the same Parent.
 	Sort int
-	// ApiCodes lists ApiSpec.Code values, from the apis passed in the same
+	// APICodes lists ApiSpec.Code values, from the apis passed in the same
 	// call, that this node should be linked to (sys_menu_api_rule in
 	// go-admin), so that granting a role this menu also grants the APIs the
 	// page needs. Leave empty for models.Directory and models.Button nodes.
-	ApiCodes []string
+	APICodes []string
 }
 
-// ApiSpec is what an application asks the host to register as one API route
+// APISpec is what an application asks the host to register as one API route
 // for Casbin to authorize against (sys_api, and indirectly casbin_rule).
-type ApiSpec struct {
+type APISpec struct {
 	// Code identifies this spec among the apis passed in the same call; see
 	// MenuSpec.ApiCodes. It is not written to any column.
 	Code   string
@@ -102,7 +102,7 @@ type ApiSpec struct {
 // whichever tables its own schema uses.
 //
 // Security note, not a suggestion: this boundary does not sandbox anything.
-// The tx passed to SeedMenus is a full *gorm.DB - the same handle an
+// The tx passed to Menus is a full *gorm.DB - the same handle an
 // application's migration already holds outside this call - so an
 // application that wanted to write sys_menu, sys_api, sys_menu_api_rule, or
 // casbin_rule directly, bypassing Seeder entirely, always could. There is
@@ -116,7 +116,7 @@ type ApiSpec struct {
 // to know go-admin's schema to be well-behaved, not so a malicious one is
 // contained.
 type Seeder interface {
-	SeedMenus(tx *gorm.DB, appCode string, menus []MenuSpec, apis []ApiSpec) error
+	Menus(tx *gorm.DB, appCode string, menus []MenuSpec, apis []APISpec) error
 }
 
 var (
@@ -133,7 +133,7 @@ var (
 // ever discarded.
 //
 // Call it once, from the host's own init() or startup code, before any
-// application's migration calls SeedMenus.
+// application's migration calls Menus.
 func RegisterSeeder(s Seeder) {
 	if s == nil {
 		panic("seed: RegisterSeeder called with a nil Seeder")
@@ -146,11 +146,11 @@ func RegisterSeeder(s Seeder) {
 	seeder = s
 }
 
-// ErrNoSeeder is returned by SeedMenus when no host has called
+// ErrNoSeeder is returned by Menus when no host has called
 // RegisterSeeder.
 var ErrNoSeeder = errors.New("seed: no Seeder registered; the host must call seed.RegisterSeeder before any application migration calls SeedMenus")
 
-// SeedMenus asks the registered host Seeder to turn menus and apis into
+// Menus asks the registered host Seeder to turn menus and apis into
 // rows, inside the caller's own transaction. Every application-authored
 // migration that needs a menu, an API, or both is expected to go through
 // this function rather than writing to sys_menu / sys_api directly - see the
@@ -166,7 +166,7 @@ var ErrNoSeeder = errors.New("seed: no Seeder registered; the host must call see
 // It returns ErrNoSeeder rather than panicking when nothing has registered:
 // an application's migration should get an ordinary error it can report,
 // not a crash, from running against a host that has not wired up seeding.
-func SeedMenus(tx *gorm.DB, appCode string, menus []MenuSpec, apis []ApiSpec) error {
+func Menus(tx *gorm.DB, appCode string, menus []MenuSpec, apis []APISpec) error {
 	if appCode == "" {
 		return errors.New("seed: SeedMenus called with an empty appCode")
 	}
@@ -177,7 +177,7 @@ func SeedMenus(tx *gorm.DB, appCode string, menus []MenuSpec, apis []ApiSpec) er
 	if s == nil {
 		return ErrNoSeeder
 	}
-	if err := s.SeedMenus(tx, appCode, menus, apis); err != nil {
+	if err := s.Menus(tx, appCode, menus, apis); err != nil {
 		return fmt.Errorf("seed: app %q: %w", appCode, err)
 	}
 	return nil

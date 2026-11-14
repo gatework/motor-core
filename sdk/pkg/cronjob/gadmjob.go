@@ -1,3 +1,4 @@
+// Package cronjob constructs cron schedules using the supported seconds syntax.
 package cronjob
 
 import (

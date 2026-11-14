@@ -8,12 +8,15 @@ import (
 	"github.com/gatework/motor-core/config/encoder/yaml"
 )
 
+// Options selects the encoders available to a reader.
 type Options struct {
 	Encoding map[string]encoder.Encoder
 }
 
+// Option changes reader construction settings.
 type Option func(o *Options)
 
+// NewOptions applies options to the built-in configuration encoders.
 func NewOptions(opts ...Option) Options {
 	options := Options{
 		Encoding: map[string]encoder.Encoder{
@@ -30,6 +33,7 @@ func NewOptions(opts ...Option) Options {
 	return options
 }
 
+// WithEncoder registers an encoder under its format name.
 func WithEncoder(e encoder.Encoder) Option {
 	return func(o *Options) {
 		if o.Encoding == nil {

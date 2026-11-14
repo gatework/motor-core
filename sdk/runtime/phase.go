@@ -124,20 +124,20 @@ func (p Phase) reentrant() bool { return p == AfterResource }
 // an installer registering a hook is usually running inside an init() where a
 // panic takes the whole program down and names this file rather than the
 // caller. Ask PhaseSealed if you need to know rather than read it in a log.
-func (e *Application) SetPhase(p Phase, f func(), opts ...CallbackOption) {
+func (a *Application) SetPhase(p Phase, f func(), opts ...CallbackOption) {
 	site := callerSite(2)
 	i, ok := p.index()
 	if !ok {
-		e.log().Errorf("runtime: SetPhase ignored - %v is not a life-cycle phase; "+
+		a.log().Errorf("runtime: SetPhase ignored - %v is not a life-cycle phase; "+
 			"use AfterResource, BeforeRouter, AfterListen or BeforeExit (registered at %s)", p, site)
 		return
 	}
-	if e.shutDownFor(p) {
+	if a.shutDownFor(p) {
 		// Not an error: a module registering while the process happens to be
 		// going down has done nothing wrong, and there is nothing left to do
 		// with the callback either. Reporting it as a fault would teach the
 		// reader to skip the line that matters.
-		e.log().Warnf("runtime: SetPhase(%v) ignored - the application is shutting down and that phase "+
+		a.log().Warnf("runtime: SetPhase(%v) ignored - the application is shutting down and that phase "+
 			"will not run again (registered at %s)", p, site)
 		return
 	}
@@ -148,7 +148,7 @@ func (e *Application) SetPhase(p Phase, f func(), opts ...CallbackOption) {
 		// would be its own silent failure. The warning is here because the
 		// same option means something different on the second run - the
 		// process it exits is one that is already serving traffic.
-		e.log().Warnf("runtime: %v callback %s is marked WithFatal - reasonable on the first start, "+
+		a.log().Warnf("runtime: %v callback %s is marked WithFatal - reasonable on the first start, "+
 			"but this phase runs again after a configuration reload, where exiting kills a process "+
 			"that is already serving requests", p, cb.label())
 	}
@@ -156,7 +156,7 @@ func (e *Application) SetPhase(p Phase, f func(), opts ...CallbackOption) {
 	if p == BeforeExit {
 		runner = "RunShutdown or " + runner
 	}
-	e.register(&e.phases[i], cb, "SetPhase("+p.String()+")", runner)
+	a.register(&a.phases[i], cb, "SetPhase("+p.String()+")", runner)
 }
 
 // RunPhase executes the callbacks registered for p, in registration order.
@@ -181,33 +181,33 @@ func (e *Application) SetPhase(p Phase, f func(), opts ...CallbackOption) {
 // trigger that arrives during a round records that another round is owed and
 // returns without waiting for it, which makes RunPhase(AfterResource) the one
 // case that can return before the work is done. See runReentrant.
-func (e *Application) RunPhase(p Phase) {
+func (a *Application) RunPhase(p Phase) {
 	i, ok := p.index()
 	if !ok {
-		e.log().Errorf("runtime: RunPhase(%v) did nothing - that is not a life-cycle phase; "+
+		a.log().Errorf("runtime: RunPhase(%v) did nothing - that is not a life-cycle phase; "+
 			"use AfterResource, BeforeRouter, AfterListen or BeforeExit", p)
 		return
 	}
-	if e.shutDownFor(p) {
+	if a.shutDownFor(p) {
 		// The reload that triggered this started before the shutdown did,
 		// and finishing it would rebuild resources the cleanup is taking
 		// apart. Losing it is the point.
-		e.log().Warnf("runtime: RunPhase(%v) did nothing - the application is shutting down; "+
+		a.log().Warnf("runtime: RunPhase(%v) did nothing - the application is shutting down; "+
 			"a configuration reload that arrives now must not rebuild what is being torn down", p)
 		return
 	}
 	if p.reentrant() {
-		e.runReentrant(&e.phases[i], p.String())
+		a.runReentrant(&a.phases[i], p.String())
 		return
 	}
 	if p == BeforeExit {
 		// Same registry and same reverse order as RunShutdown, which is
 		// what a caller with no budget to give is asking for. A context
 		// that never ends makes the two the same call.
-		_ = e.RunShutdown(context.Background())
+		_ = a.RunShutdown(context.Background())
 		return
 	}
-	e.runRegistry(&e.phases[i], p.String())
+	a.runRegistry(&a.phases[i], p.String())
 }
 
 // shutDownFor reports whether p is closed by a shutdown in progress.
@@ -215,11 +215,11 @@ func (e *Application) RunPhase(p Phase) {
 // BeforeExit is exempt: it is the phase the shutdown exists to run, and
 // RunPhase(BeforeExit) is a legitimate call after BeginShutdown - gating it
 // would make the flag skip the cleanup it was added to protect.
-func (e *Application) shutDownFor(p Phase) bool {
-	return p != BeforeExit && e.shuttingDown.Load()
+func (a *Application) shutDownFor(p Phase) bool {
+	return p != BeforeExit && a.shuttingDown.Load()
 }
 
-// PhaseSealed reports whether p has already run, i.e. whether a further
+// PhaseSealed reports whether p has already run, i.a. whether a further
 // SetPhase for it would be dropped.
 //
 // AfterResource always reports false: it is re-entrant, so registering into
@@ -230,14 +230,14 @@ func (e *Application) shutDownFor(p Phase) bool {
 // will not run in that phase" is the answer that keeps a caller from
 // registering into a hole, and it is also reported, because asking about a
 // phase that does not exist is a mistake in the caller either way.
-func (e *Application) PhaseSealed(p Phase) bool {
+func (a *Application) PhaseSealed(p Phase) bool {
 	i, ok := p.index()
 	if !ok {
-		e.log().Errorf("runtime: PhaseSealed(%v) reports sealed - that is not a life-cycle phase; "+
+		a.log().Errorf("runtime: PhaseSealed(%v) reports sealed - that is not a life-cycle phase; "+
 			"use AfterResource, BeforeRouter, AfterListen or BeforeExit", p)
 		return true
 	}
-	e.mux.RLock()
-	defer e.mux.RUnlock()
-	return e.phases[i].sealed
+	a.mux.RLock()
+	defer a.mux.RUnlock()
+	return a.phases[i].sealed
 }

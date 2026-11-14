@@ -1,3 +1,4 @@
+// Package json encodes configuration values as JSON.
 package json
 
 import (
@@ -20,6 +21,7 @@ func (j jsonEncoder) String() string {
 	return "json"
 }
 
+// NewEncoder constructs a JSON configuration encoder.
 func NewEncoder() encoder.Encoder {
 	return jsonEncoder{}
 }

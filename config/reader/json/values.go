@@ -106,15 +106,15 @@ func cloneJSONValue(val any, active map[jsonVisit]bool) (any, bool) {
 		}
 		active[visit] = true
 		defer delete(active, visit)
-		copy := make(map[string]any, len(value))
+		cloned := make(map[string]any, len(value))
 		for key, item := range value {
-			cloned, ok := cloneJSONValue(item, active)
+			itemClone, ok := cloneJSONValue(item, active)
 			if !ok {
 				return nil, false
 			}
-			copy[key] = cloned
+			cloned[key] = itemClone
 		}
-		return copy, true
+		return cloned, true
 	case []any:
 		if value == nil {
 			return nil, true
@@ -125,15 +125,15 @@ func cloneJSONValue(val any, active map[jsonVisit]bool) (any, bool) {
 		}
 		active[visit] = true
 		defer delete(active, visit)
-		copy := make([]any, len(value))
+		cloned := make([]any, len(value))
 		for i, item := range value {
-			cloned, ok := cloneJSONValue(item, active)
+			itemClone, ok := cloneJSONValue(item, active)
 			if !ok {
 				return nil, false
 			}
-			copy[i] = cloned
+			cloned[i] = itemClone
 		}
-		return copy, true
+		return cloned, true
 	default:
 		return nil, false
 	}
@@ -149,7 +149,11 @@ func (j *jsonValues) Map() map[string]any {
 	if m == nil {
 		return map[string]any{}
 	}
-	return cloneValue(m).(map[string]any)
+	result := make(map[string]any, len(m))
+	for key, value := range m {
+		result[key] = cloneValue(value)
+	}
+	return result
 }
 
 func (j *jsonValues) Scan(v any) error {

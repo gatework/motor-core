@@ -1,9 +1,11 @@
 package pkg
 
 type (
+	// Mode identifies an application execution environment.
 	Mode string
 )
 
+// Application modes select development, test, or production behavior.
 const (
 	ModeDev  Mode = "dev"     //开发模式
 	ModeTest Mode = "test"    //测试模式

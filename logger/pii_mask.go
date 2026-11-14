@@ -46,6 +46,7 @@ func newMaskingCore(inner zapcore.Core) zapcore.Core {
 	return &maskingCore{Core: inner}
 }
 
+// With returns a field view that borrows the logger resources.
 func (c *maskingCore) With(fields []zapcore.Field) zapcore.Core {
 	return &maskingCore{Core: c.Core.With(maskFields(fields))}
 }
@@ -68,6 +69,7 @@ func (c *maskingCore) Write(ent zapcore.Entry, fields []zapcore.Field) error {
 	return c.Core.Write(ent, fields)
 }
 
+// Sync waits for accepted entries and synchronizes the wrapped output.
 func (c *maskingCore) Sync() error {
 	return c.Core.Sync()
 }

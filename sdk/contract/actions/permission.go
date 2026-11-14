@@ -38,9 +38,9 @@ import (
 // into a WHERE clause.
 type DataPermission struct {
 	DataScope string
-	UserId    int
-	DeptId    int
-	RoleId    int
+	UserID    int
+	DeptID    int
+	RoleID    int
 }
 
 // PermissionKey is the gin context key PermissionAction stores a
@@ -71,8 +71,8 @@ func PermissionAction(enabled func() bool) gin.HandlerFunc {
 			return
 		}
 
-		userId := user.UserIDString(c)
-		if userId == "" {
+		userID := user.IDString(c)
+		if userID == "" {
 			c.Set(PermissionKey, new(DataPermission))
 			c.Next()
 			return
@@ -101,7 +101,7 @@ func PermissionAction(enabled func() bool) gin.HandlerFunc {
 			return
 		}
 		msgID := pkg.RequestID(c)
-		p, err := newDataPermission(db.WithContext(c.Request.Context()), userId)
+		p, err := newDataPermission(db.WithContext(c.Request.Context()), userID)
 		if err != nil {
 			log.Errorf("MsgID[%s] PermissionAction error: %s", msgID, err)
 			response.Error(c, 500, err, "could not determine the data permission scope")
@@ -127,20 +127,20 @@ func permissionFromClaims(c *gin.Context) (*DataPermission, bool) {
 	}
 	return &DataPermission{
 		DataScope: scope,
-		UserId:    user.UserID(c),
-		DeptId:    user.DepartmentID(c),
-		RoleId:    user.RoleID(c),
+		UserID:    user.ID(c),
+		DeptID:    user.DepartmentID(c),
+		RoleID:    user.RoleID(c),
 	}, true
 }
 
-func newDataPermission(tx *gorm.DB, userId any) (*DataPermission, error) {
+func newDataPermission(tx *gorm.DB, userID any) (*DataPermission, error) {
 	var err error
 	p := &DataPermission{}
 
 	err = tx.Table("sys_user").
 		Select("sys_user.user_id", "sys_role.role_id", "sys_user.dept_id", "sys_role.data_scope").
 		Joins("left join sys_role on sys_role.role_id = sys_user.role_id").
-		Where("sys_user.user_id = ?", userId).
+		Where("sys_user.user_id = ?", userID).
 		Scan(p).Error
 	if err != nil {
 		err = fmt.Errorf("look up the user's data permission scope: %w", err)
@@ -197,9 +197,9 @@ func Permission(tableName string, p *DataPermission, enabled func() bool) func(d
 		case DataScopeAll:
 			return db
 		case DataScopeCustom:
-			return db.Where(tableName+".create_by in (select sys_user.user_id from sys_role_dept left join sys_user on sys_user.dept_id=sys_role_dept.dept_id where sys_role_dept.role_id = ?)", p.RoleId)
+			return db.Where(tableName+".create_by in (select sys_user.user_id from sys_role_dept left join sys_user on sys_user.dept_id=sys_role_dept.dept_id where sys_role_dept.role_id = ?)", p.RoleID)
 		case DataScopeDept:
-			if p.DeptId <= 0 {
+			if p.DeptID <= 0 {
 				// A department id of 0 identifies no real department (see
 				// go-admin's sys_dept.go: dept_path always starts with
 				// "/0/", the reserved root). Matching it literally would
@@ -207,18 +207,18 @@ func Permission(tableName string, p *DataPermission, enabled func() bool) func(d
 				// "no one" - fail closed instead. PRD 006 F14/H3.
 				return db.Where("1 = 0")
 			}
-			return db.Where(tableName+".create_by in (SELECT user_id from sys_user where dept_id = ? )", p.DeptId)
+			return db.Where(tableName+".create_by in (SELECT user_id from sys_user where dept_id = ? )", p.DeptID)
 		case DataScopeDeptTree:
-			if p.DeptId <= 0 {
+			if p.DeptID <= 0 {
 				// dept_path is built as "/0/" + id + "/..." for every
 				// department, so a DeptId of 0 turns the LIKE pattern below
 				// into '%/0/%', which matches every row in sys_dept - full
 				// visibility instead of none. PRD 006 F14/H3.
 				return db.Where("1 = 0")
 			}
-			return db.Where(tableName+".create_by in (SELECT user_id from sys_user where sys_user.dept_id in(select dept_id from sys_dept where dept_path like ? ))", "%/"+pkg.IntToString(p.DeptId)+"/%")
+			return db.Where(tableName+".create_by in (SELECT user_id from sys_user where sys_user.dept_id in(select dept_id from sys_dept where dept_path like ? ))", "%/"+pkg.IntToString(p.DeptID)+"/%")
 		case DataScopeSelf:
-			return db.Where(tableName+".create_by = ?", p.UserId)
+			return db.Where(tableName+".create_by = ?", p.UserID)
 		default:
 			// Unrecognized scope: never configured, corrupted data, or a
 			// value a future version adds and this one does not know yet.

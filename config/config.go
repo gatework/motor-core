@@ -2,8 +2,6 @@
 package config
 
 import (
-	"context"
-
 	"github.com/gatework/motor-core/config/loader"
 	"github.com/gatework/motor-core/config/reader"
 	"github.com/gatework/motor-core/config/source"
@@ -26,9 +24,6 @@ type Options struct {
 	Loader loader.Loader
 	Reader reader.Reader
 	Source []source.Source
-
-	// for alternative data
-	Context context.Context
 
 	Entity Entity
 }

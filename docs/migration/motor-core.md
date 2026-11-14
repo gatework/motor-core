@@ -160,3 +160,33 @@ logger helpers using typed fields. Sink benchmarks report actual delivery and
 discard counts. The tested cache RWMutex candidate was rejected because mixed
 read/write p99 regressed; the cache implementation retains its previous mutex.
 Local timing results do not guarantee production latency across workloads.
+
+## Local allocation comparison
+
+On Go 1.27.4, darwin/arm64 (Apple M5), six benchmark samples against the
+pre-refactor working snapshot measured the following allocations per operation:
+
+| Query | Before | After |
+| --- | ---: | ---: |
+| Empty filters | 1 | 0 |
+| Typical filters | 23 | 6 |
+| Full filters | 101 | 20 |
+
+These measurements isolate DTO resolution, not database or HTTP throughput.
+Cache operations remained zero-allocation. Captcha verification changed from
+31.18 ns to 38.02 ns in a separate local comparison after adopting the bounded
+cache; it is not a performance improvement.
+
+### Final naming and startup contracts
+
+- `user.UserID`, `UserIDString`, and `UserName` become `ID`, `IDString`, and `Name`.
+- `seed.SeedMenus` becomes `Menus`; `source.NewNoopWatcher` returns the exported `*source.NoopWatcher`.
+- Required startup callback failures panic after reporting their cause. The host owns recovery and process exit; library callbacks do not call `os.Exit`.
+- TLS listeners negotiate TLS when certificate/key options are supplied.
+
+- `StructToJsonStr` becomes `StructToJSONStr`; `Ids.Ids` becomes `IDs.IDs`.
+- HTTP `Get`, `Post`, `GetLocation`, and `poster.GetImage` take a context first.
+  Poster image retrieval verifies TLS and decodes a bounded response stream.
+- Unused `ReplaceHelper`, `FileMonitoringById`, `utils.Hmac` (an MD5 helper), and
+  `database.Configure` are removed without aliases. Database configuration keeps
+  the concrete `DBConfig` and its resolver-specific consumer interface.

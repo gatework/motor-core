@@ -50,6 +50,7 @@ func benchEnforcer(b *testing.B, n int) *casbin.SyncedEnforcer {
 // takes a read lock, so this runs in parallel: the question is not only how
 // long one check takes but whether checks get in each other's way.
 func runEnforce(b *testing.B, e *casbin.SyncedEnforcer, sub, obj, act string, want bool) {
+	b.Helper()
 	b.ReportAllocs()
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
@@ -68,6 +69,7 @@ func runEnforce(b *testing.B, e *casbin.SyncedEnforcer, sub, obj, act string, wa
 }
 
 func benchEnforce(b *testing.B, n int, sub, obj, act string, want bool) {
+	b.Helper()
 	runEnforce(b, benchEnforcer(b, n), sub, obj, act, want)
 }
 
@@ -137,6 +139,7 @@ func sameSubjectEnforcer(tb testing.TB, n int, builtin bool) *casbin.SyncedEnfor
 }
 
 func benchSameSubject(b *testing.B, n int, builtin bool) {
+	b.Helper()
 	runEnforce(b, sameSubjectEnforcer(b, n, builtin), "operator", "/api/v1/dept", "GET", true)
 }
 

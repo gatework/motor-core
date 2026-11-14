@@ -16,13 +16,15 @@ var (
 
 // Log is debug log interface for reading and writing logs
 // Log 是用于读写日志的调试日志接口
+//
+//nolint:iface // Log is the public storage port implemented by host audit backends.
 type Log interface {
 	// Read reads log entries from the logger
 	// Read 从日志记录器中读取日志条目
-	Read(...ReadOption) ([]Record, error)
+	Read(opts ...ReadOption) ([]Record, error)
 	// Write writes records to log
 	// Write 将记录写入日志
-	Write(Record) error
+	Write(record Record) error
 	// Stream log records
 	// Stream 日志记录流
 	Stream() (Stream, error)

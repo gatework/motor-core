@@ -1,5 +1,6 @@
 package config
 
+// JWT configures token signing and lifetime limits.
 type JWT struct {
 	Secret string
 	// Timeout token 有效期，单位：秒

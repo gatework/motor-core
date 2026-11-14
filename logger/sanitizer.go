@@ -116,6 +116,7 @@ type Sanitizer struct {
 	closeErr  error
 }
 
+// NewSanitizerLogger constructs a sanitizing decorator with a snapshot of its rules.
 func NewSanitizerLogger(log Logger, config SanitizerConfig) *Sanitizer {
 	if log == nil {
 		log = Default()
@@ -138,8 +139,14 @@ func NewSanitizerLogger(log Logger, config SanitizerConfig) *Sanitizer {
 	}
 	return &Sanitizer{logger: log, config: config, matcher: matcher, inherited: slices.Clone(presetFields(log))}
 }
-func (s *Sanitizer) Enabled(level Level) bool    { return s.logger.Enabled(level) }
+
+// Enabled reports whether the wrapped logger accepts level.
+func (s *Sanitizer) Enabled(level Level) bool { return s.logger.Enabled(level) }
+
+// With returns a field view that borrows the logger resources.
 func (s *Sanitizer) With(fields ...Field) Logger { return bind(s, fields) }
+
+// Log records an entry with per-call context and structured fields.
 func (s *Sanitizer) Log(ctx context.Context, level Level, message string, fields ...Field) {
 	if !s.Enabled(level) {
 		return
@@ -159,6 +166,18 @@ func (s *Sanitizer) Log(ctx context.Context, level Level, message string, fields
 	}
 	s.logger.Log(ctx, level, message, fields...)
 }
+
+// Sync waits for accepted entries and synchronizes the wrapped output.
+func (s *Sanitizer) Sync() error { return syncLogger(s.logger) }
+
+// Close completes owned work and closes the wrapped root once.
+func (s *Sanitizer) Close() error {
+	s.once.Do(func() { s.closeErr = closeLogger(s.logger) })
+	return s.closeErr
+}
+
+func (s *Sanitizer) presetFields() []Field { return presetFields(s.logger) }
+
 func (s *Sanitizer) matchRule(name string) *SanitizerRule {
 	lowerName := strings.ToLower(name)
 	if rule := s.matcher[lowerName]; rule != nil {
@@ -206,10 +225,3 @@ func (s *Sanitizer) hashString(value string) string {
 	hash := sha256.Sum256([]byte(value))
 	return "sha256:" + hex.EncodeToString(hash[:8])
 }
-func (s *Sanitizer) Sync() error { return syncLogger(s.logger) }
-func (s *Sanitizer) Close() error {
-	s.once.Do(func() { s.closeErr = closeLogger(s.logger) })
-	return s.closeErr
-}
-
-func (s *Sanitizer) presetFields() []Field { return presetFields(s.logger) }

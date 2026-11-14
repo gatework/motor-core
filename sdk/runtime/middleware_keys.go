@@ -34,7 +34,7 @@ const (
 // Callers that need JWT enforcement to be non-optional should still check ok
 // explicitly and fail loudly, since a missing middleware is not a state a
 // router should silently continue past.
-func (e *Application) GetHandlerFunc(key string) (gin.HandlerFunc, bool) {
-	h, ok := e.Middleware(key).(gin.HandlerFunc)
+func (a *Application) GetHandlerFunc(key string) (gin.HandlerFunc, bool) {
+	h, ok := a.Middleware(key).(gin.HandlerFunc)
 	return h, ok
 }

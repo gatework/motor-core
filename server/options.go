@@ -9,6 +9,7 @@ package server
 
 import "time"
 
+// Option configures the service manager before it begins running.
 type Option func(*options)
 
 type options struct {

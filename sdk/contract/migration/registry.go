@@ -58,12 +58,6 @@ func NewRegistry() *Registry {
 	return &Registry{entries: make(map[string]Entry)}
 }
 
-func (r *Registry) setVersion(k, appCode string, f func(db *gorm.DB, version string) error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.entries[k] = Entry{AppCode: appCode, Fn: f}
-}
-
 // SetVersion registers a migration owned by the framework itself, under the
 // empty app code.
 func (r *Registry) SetVersion(k string, f func(db *gorm.DB, version string) error) {
@@ -91,6 +85,19 @@ func (r *Registry) ForApp(code string) *AppRegistrar {
 		panic("migration.ForApp: app code " + FrameworkAppCode + " is reserved for the framework")
 	}
 	return &AppRegistrar{r: r, appCode: code}
+}
+
+// Snapshot returns a copy of every registered entry, keyed exactly as
+// sys_migration.version is. This is the only way the host's execution
+// engine reads the registry: a copy, not the live map, so ordering,
+// filtering, and iterating it can happen without holding the registry's
+// lock across a database call.
+func (r *Registry) Snapshot() map[string]Entry {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make(map[string]Entry, len(r.entries))
+	maps.Copy(out, r.entries)
+	return out
 }
 
 // AppRegistrar is a per-app view over a Registry.
@@ -128,17 +135,10 @@ func namespacedKey(appCode, k string) string {
 	return appCode + "-" + k
 }
 
-// Snapshot returns a copy of every registered entry, keyed exactly as
-// sys_migration.version is. This is the only way the host's execution
-// engine reads the registry: a copy, not the live map, so ordering,
-// filtering, and iterating it can happen without holding the registry's
-// lock across a database call.
-func (r *Registry) Snapshot() map[string]Entry {
+func (r *Registry) setVersion(k, appCode string, f func(db *gorm.DB, version string) error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out := make(map[string]Entry, len(r.entries))
-	maps.Copy(out, r.entries)
-	return out
+	r.entries[k] = Entry{AppCode: appCode, Fn: f}
 }
 
 // NormalizeAppCode applies the same rule ForApp does, so a code typed on the

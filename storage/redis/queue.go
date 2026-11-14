@@ -64,28 +64,6 @@ type QueueOptions struct {
 	Batch int64
 }
 
-func (o QueueOptions) withDefaults() QueueOptions {
-	if o.Group == "" {
-		o.Group = defaultGroup
-	}
-	if o.Consumer == "" {
-		o.Consumer = defaultConsumer()
-	}
-	if o.MaxAttempts <= 0 {
-		o.MaxAttempts = defaultMaxAttempts
-	}
-	if o.Block <= 0 {
-		o.Block = defaultBlock
-	}
-	if o.ClaimMinIdle <= 0 {
-		o.ClaimMinIdle = defaultClaimMinIdle
-	}
-	if o.Batch <= 0 {
-		o.Batch = defaultBatch
-	}
-	return o
-}
-
 func defaultConsumer() string {
 	host, err := os.Hostname()
 	if err != nil || host == "" {
@@ -130,10 +108,9 @@ type Queue struct {
 	// its topic set have to be one step.
 	started bool
 
-	// stopCtx is cancelled by Shutdown, so a running Run unblocks even when its
+	// stop is closed by Shutdown, so a running Run unblocks even when its
 	// own context is still live.
-	stopCtx    context.Context
-	stopCancel context.CancelFunc
+	stop chan struct{}
 }
 
 var _ storage.Queue = (*Queue)(nil)
@@ -155,7 +132,6 @@ func OpenQueue(ctx context.Context, clientOpts *goredis.Options, opts QueueOptio
 }
 
 func newQueue(client goredis.UniversalClient, owned bool, opts QueueOptions) *Queue {
-	stopCtx, stopCancel := context.WithCancel(context.Background())
 	return &Queue{
 		client:        client,
 		owned:         owned,
@@ -166,20 +142,14 @@ func newQueue(client goredis.UniversalClient, owned bool, opts QueueOptions) *Qu
 		pending:       make(map[string]struct{}),
 		runDone:       make(chan struct{}),
 		done:          make(chan struct{}),
-		stopCtx:       stopCtx,
-		stopCancel:    stopCancel,
+		stop:          make(chan struct{}),
 	}
 }
 
 // String identifies the backend.
 func (q *Queue) String() string { return "redis" }
 
-func (q *Queue) stream(topic string) string { return q.opts.KeyPrefix + topic }
-
-func (q *Queue) topic(stream string) string {
-	return strings.TrimPrefix(stream, q.opts.KeyPrefix)
-}
-
+// Subscribe creates the consumer group and registers a handler before Run.
 func (q *Queue) Subscribe(ctx context.Context, topic string, h storage.Handler) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -232,39 +202,6 @@ func (q *Queue) Subscribe(ctx context.Context, topic string, h storage.Handler) 
 	return nil
 }
 
-// begin marks the queue started and returns the topics it will serve. The two
-// happen under one lock, so a Subscribe cannot slip between them and register
-// a topic the read loop will never look at.
-func (q *Queue) begin() ([]string, error) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	if q.closed {
-		return nil, storage.ErrQueueClosed
-	}
-	if q.started {
-		return nil, storage.ErrQueueAlreadyStarted
-	}
-	q.started = true
-
-	topics := make([]string, 0, len(q.handlers))
-	for t := range q.handlers {
-		topics = append(topics, t)
-	}
-	return topics, nil
-}
-
-// ensureGroup creates the consumer group, treating an existing one as success.
-func (q *Queue) ensureGroup(ctx context.Context, topic string) error {
-	// MKSTREAM creates the stream when it is missing, and "$" starts the group
-	// at the current end so a new subscriber does not replay the whole history.
-	err := q.client.XGroupCreateMkStream(ctx, q.stream(topic), q.opts.Group, "$").Err()
-	if err != nil && !strings.Contains(err.Error(), "BUSYGROUP") {
-		return err
-	}
-	return nil
-}
-
 // isMissingGroup reports the error Redis returns for a read against a group
 // that does not exist. It has no dedicated type in the client, so the reply is
 // matched on its prefix, which is what NOGROUP is for.
@@ -272,25 +209,7 @@ func isMissingGroup(err error) bool {
 	return err != nil && strings.HasPrefix(err.Error(), "NOGROUP")
 }
 
-// groupExists asks Redis whether anyone consumes the topic.
-func (q *Queue) groupExists(ctx context.Context, topic string) (bool, error) {
-	groups, err := q.client.XInfoGroups(ctx, q.stream(topic)).Result()
-	if err != nil {
-		// A stream that was never created has no group either. Redis reports
-		// this as an ordinary error rather than a nil reply.
-		if errors.Is(err, goredis.Nil) || strings.Contains(err.Error(), "no such key") {
-			return false, nil
-		}
-		return false, err
-	}
-	for _, g := range groups {
-		if g.Name == q.opts.Group {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
+// Publish appends a message only when its topic has a known consumer group.
 func (q *Queue) Publish(ctx context.Context, msg storage.Message) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -333,6 +252,7 @@ func (q *Queue) Publish(ctx context.Context, msg storage.Message) error {
 	}).Err()
 }
 
+// Run consumes subscribed streams until cancellation or shutdown.
 func (q *Queue) Run(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -354,7 +274,13 @@ func (q *Queue) Run(ctx context.Context) error {
 	// Shutdown has to unblock the read as well, so both signals feed one context.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	defer context.AfterFunc(q.stopCtx, cancel)()
+	wg.Go(func() {
+		select {
+		case <-q.stop:
+			cancel()
+		case <-ctx.Done():
+		}
+	})
 
 	if len(topics) == 0 {
 		// XREADGROUP needs at least one stream, so there is nothing to do but
@@ -398,36 +324,8 @@ func (q *Queue) Run(ctx context.Context) error {
 			// The block elapsed with nothing new.
 			continue
 		case isMissingGroup(err):
-			if ctx.Err() != nil {
-				// Cancellation outranks recovery. A real client reports the
-				// cancellation itself, but this branch loops, and a looping
-				// branch that cannot be stopped is a hang waiting to happen.
+			if !q.recoverGroups(ctx, topics) {
 				return nil
-			}
-			// The group can be gone for two reasons: a Subscribe that has not
-			// finished creating it yet, or an operator deleting the stream
-			// while this is running. Neither is a reason to stop consuming
-			// forever, which is what returning here used to do.
-			recreated := true
-			for _, t := range topics {
-				if err := q.ensureGroup(ctx, t); err != nil {
-					recreated = false
-					if ctx.Err() == nil {
-						slog.WarnContext(ctx, "queue: could not recreate the consumer group",
-							"topic", t, "error", err)
-					}
-				}
-			}
-			if !recreated {
-				// A missing group comes back immediately and ignores Block, so
-				// a group that cannot be recreated — a read-only replica, an
-				// ACL without XGROUP — would spin this loop at full speed and
-				// fill the log. Wait out one read instead.
-				select {
-				case <-ctx.Done():
-					return nil
-				case <-time.After(q.opts.Block):
-				}
 			}
 			continue
 		case err != nil:
@@ -447,6 +345,156 @@ func (q *Queue) Run(ctx context.Context) error {
 			}
 		}
 	}
+}
+
+// Shutdown stops accepting messages and cancels the read and retry loops.
+// The owned client closes only after Run and admitted operations have finished.
+// Unacknowledged deliveries remain pending for another consumer.
+func (q *Queue) Shutdown(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	q.startShutdown()
+	select {
+	case <-q.done:
+		q.mu.RLock()
+		defer q.mu.RUnlock()
+		return q.shutdownErr
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// emptyField stands in for a message with no values. XADD rejects an entry
+// that carries no field at all, and a message whose payload is empty is still
+// a message worth delivering.
+//
+// Its value is the empty string, which json.Marshal cannot produce, so a
+// caller's own field of the same name is never mistaken for the marker.
+const emptyField = "go-admin:empty"
+
+// encodeValues renders each value as JSON, because a stream field is a string.
+func encodeValues(in map[string]any) (map[string]any, error) {
+	if len(in) == 0 {
+		return map[string]any{emptyField: ""}, nil
+	}
+
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		b, err := json.Marshal(v)
+		if err != nil {
+			return nil, fmt.Errorf("storage: encode value %q: %w", k, err)
+		}
+		out[k] = string(b)
+	}
+	return out, nil
+}
+
+func decodeValues(in map[string]any) map[string]any {
+	if len(in) == 1 {
+		if v, ok := in[emptyField]; ok && v == "" {
+			return map[string]any{}
+		}
+	}
+
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		s, ok := v.(string)
+		if !ok {
+			out[k] = v
+			continue
+		}
+
+		var decoded any
+		if err := json.Unmarshal([]byte(s), &decoded); err != nil {
+			// Written by something other than this package; pass it through as
+			// the string Redis returned.
+			out[k] = s
+			continue
+		}
+		out[k] = decoded
+	}
+	return out
+}
+
+func (o QueueOptions) withDefaults() QueueOptions {
+	if o.Group == "" {
+		o.Group = defaultGroup
+	}
+	if o.Consumer == "" {
+		o.Consumer = defaultConsumer()
+	}
+	if o.MaxAttempts <= 0 {
+		o.MaxAttempts = defaultMaxAttempts
+	}
+	if o.Block <= 0 {
+		o.Block = defaultBlock
+	}
+	if o.ClaimMinIdle <= 0 {
+		o.ClaimMinIdle = defaultClaimMinIdle
+	}
+	if o.Batch <= 0 {
+		o.Batch = defaultBatch
+	}
+	return o
+}
+
+func (q *Queue) stream(topic string) string { return q.opts.KeyPrefix + topic }
+
+func (q *Queue) topic(stream string) string {
+	return strings.TrimPrefix(stream, q.opts.KeyPrefix)
+}
+
+// begin marks the queue started and returns the topics it will serve. The two
+// happen under one lock, so a Subscribe cannot slip between them and register
+// a topic the read loop will never look at.
+func (q *Queue) begin() ([]string, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if q.closed {
+		return nil, storage.ErrQueueClosed
+	}
+	if q.started {
+		return nil, storage.ErrQueueAlreadyStarted
+	}
+	q.started = true
+
+	topics := make([]string, 0, len(q.handlers))
+	for t := range q.handlers {
+		topics = append(topics, t)
+	}
+	return topics, nil
+}
+
+// ensureGroup creates the consumer group, treating an existing one as success.
+func (q *Queue) ensureGroup(ctx context.Context, topic string) error {
+	// MKSTREAM creates the stream when it is missing, and "$" starts the group
+	// at the current end so a new subscriber does not replay the whole history.
+	err := q.client.XGroupCreateMkStream(ctx, q.stream(topic), q.opts.Group, "$").Err()
+	if err != nil && !strings.Contains(err.Error(), "BUSYGROUP") {
+		return err
+	}
+	return nil
+}
+
+// groupExists asks Redis whether anyone consumes the topic.
+func (q *Queue) groupExists(ctx context.Context, topic string) (bool, error) {
+	groups, err := q.client.XInfoGroups(ctx, q.stream(topic)).Result()
+	if err != nil {
+		// A stream that was never created has no group either. Redis reports
+		// this as an ordinary error rather than a nil reply.
+		if errors.Is(err, goredis.Nil) || strings.Contains(err.Error(), "no such key") {
+			return false, nil
+		}
+		return false, err
+	}
+	for _, g := range groups {
+		if g.Name == q.opts.Group {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // reclaimLoop retries deliveries that were never acknowledged, which is how a
@@ -573,7 +621,7 @@ func (q *Queue) startShutdown() {
 	}
 	q.closed = true
 	started := q.started
-	q.stopCancel()
+	close(q.stop)
 	go func() {
 		q.operations.Wait()
 		if started {
@@ -590,72 +638,29 @@ func (q *Queue) startShutdown() {
 	}()
 }
 
-// Shutdown stops accepting messages and cancels the read and retry loops.
-// The owned client closes only after Run and admitted operations have finished.
-// Unacknowledged deliveries remain pending for another consumer.
-func (q *Queue) Shutdown(ctx context.Context) error {
-	if err := ctx.Err(); err != nil {
-		return err
+// recoverGroups paces a missing-group response, which otherwise bypasses Block.
+func (q *Queue) recoverGroups(ctx context.Context, topics []string) bool {
+	if ctx.Err() != nil {
+		return false
 	}
-	q.startShutdown()
+	recreated := true
+	for _, topic := range topics {
+		if err := q.ensureGroup(ctx, topic); err != nil {
+			recreated = false
+			if ctx.Err() == nil {
+				slog.WarnContext(ctx, "queue: could not recreate the consumer group", "topic", topic, "error", err)
+			}
+		}
+	}
+	if recreated {
+		return true
+	}
+	timer := time.NewTimer(q.opts.Block)
+	defer timer.Stop()
 	select {
-	case <-q.done:
-		q.mu.RLock()
-		defer q.mu.RUnlock()
-		return q.shutdownErr
 	case <-ctx.Done():
-		return ctx.Err()
+		return false
+	case <-timer.C:
+		return true
 	}
-}
-
-// emptyField stands in for a message with no values. XADD rejects an entry
-// that carries no field at all, and a message whose payload is empty is still
-// a message worth delivering.
-//
-// Its value is the empty string, which json.Marshal cannot produce, so a
-// caller's own field of the same name is never mistaken for the marker.
-const emptyField = "go-admin:empty"
-
-// encodeValues renders each value as JSON, because a stream field is a string.
-func encodeValues(in map[string]any) (map[string]any, error) {
-	if len(in) == 0 {
-		return map[string]any{emptyField: ""}, nil
-	}
-
-	out := make(map[string]any, len(in))
-	for k, v := range in {
-		b, err := json.Marshal(v)
-		if err != nil {
-			return nil, fmt.Errorf("storage: encode value %q: %w", k, err)
-		}
-		out[k] = string(b)
-	}
-	return out, nil
-}
-
-func decodeValues(in map[string]any) map[string]any {
-	if len(in) == 1 {
-		if v, ok := in[emptyField]; ok && v == "" {
-			return map[string]any{}
-		}
-	}
-
-	out := make(map[string]any, len(in))
-	for k, v := range in {
-		s, ok := v.(string)
-		if !ok {
-			out[k] = v
-			continue
-		}
-
-		var decoded any
-		if err := json.Unmarshal([]byte(s), &decoded); err != nil {
-			// Written by something other than this package; pass it through as
-			// the string Redis returned.
-			out[k] = s
-			continue
-		}
-		out[k] = decoded
-	}
-	return out
 }

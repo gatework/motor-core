@@ -14,6 +14,7 @@ type ObjectByID struct {
 	IDs []int `json:"ids"`
 }
 
+// Bind decodes and validates the request into the receiver.
 func (s *ObjectByID) Bind(ctx *gin.Context) error {
 	request, err := api.New(ctx, api.Dependencies{})
 	if err != nil {
@@ -22,8 +23,7 @@ func (s *ObjectByID) Bind(ctx *gin.Context) error {
 	return request.Bind(s)
 }
 
-// GetID returns the single URI ID when there is no batch. A batch result owns
-// its slice and includes a nonzero URI ID without modifying the request.
+// GetID returns the selected resource identity.
 func (s *ObjectByID) GetID() any {
 	if len(s.IDs) == 0 {
 		return s.ID
@@ -41,6 +41,7 @@ type ObjectGetReq struct {
 	ID int `uri:"id"`
 }
 
+// Bind decodes and validates the URI parameters.
 func (s *ObjectGetReq) Bind(ctx *gin.Context) error {
 	request, err := api.New(ctx, api.Dependencies{})
 	if err != nil {
@@ -49,6 +50,7 @@ func (s *ObjectGetReq) Bind(ctx *gin.Context) error {
 	return request.Bind(s)
 }
 
+// GetID returns the resource identity.
 func (s *ObjectGetReq) GetID() any {
 	return s.ID
 }
@@ -58,6 +60,7 @@ type ObjectDeleteReq struct {
 	IDs []int `json:"ids"`
 }
 
+// Bind decodes and validates the deletion request body.
 func (s *ObjectDeleteReq) Bind(ctx *gin.Context) error {
 	request, err := api.New(ctx, api.Dependencies{})
 	if err != nil {
@@ -66,6 +69,7 @@ func (s *ObjectDeleteReq) Bind(ctx *gin.Context) error {
 	return request.Bind(s)
 }
 
+// GetID returns a copy of the selected resource identities.
 func (s *ObjectDeleteReq) GetID() any {
 	return slices.Clone(s.IDs)
 }

@@ -20,15 +20,15 @@ const (
 	Red         = "\033[31m"
 	Green       = "\033[32m"
 	Yellow      = "\033[33m"
-	Blue        = "\033[34m" // Caller 路径、GORM 路径
+	Blue        = "\033[34m" // Caller and GORM paths
 	Magenta     = "\033[35m"
 	Cyan        = "\033[36m"
 	White       = "\033[37m"
-	Gray        = "\033[90m" // 次要信息
-	BrightWhite = "\033[97m" // DEBUG 级别
+	Gray        = "\033[90m" // Secondary details
+	BrightWhite = "\033[97m" // Debug level
 
 	// 加粗颜色（用于高优先级信息）
-	BlueBold    = "\033[34;1m" // GORM rows 计数
+	BlueBold    = "\033[34;1m" // GORM row count
 	MagentaBold = "\033[35;1m"
 	RedBold     = "\033[31;1m" // FATAL/PANIC
 	YellowBold  = "\033[33;1m"
@@ -42,104 +42,73 @@ type ConsoleFormatter struct {
 	ForceColors     bool
 }
 
-// Format 实现 logrus.Formatter 接口（GORM 风格）
-// 性能优化：复用 entry.Buffer，避免频繁分配内存
+// Format renders an entry, reusing the buffer supplied by Logrus when present.
 func (f *ConsoleFormatter) Format(entry *logrus.Entry) ([]byte, error) {
-	var b *bytes.Buffer
-	if entry.Buffer != nil {
-		b = entry.Buffer // 复用 Buffer（高性能场景）
-	} else {
+	b := entry.Buffer
+	if b == nil {
 		b = &bytes.Buffer{}
 	}
-
-	// 时间戳格式
 	timestampFormat := f.TimestampFormat
 	if timestampFormat == "" {
 		timestampFormat = "2006-01-02 15:04:05.000"
 	}
-
-	// 日志级别颜色（GORM 风格）
-	levelColor := getLevelColor(entry.Level)
-
-	// 1. 时间戳（白色 - 与 GORM 一致）
 	fmt.Fprintf(b, "%s ", entry.Time.Format(timestampFormat))
-
-	// 2. 日志级别（带颜色，不加粗）
 	levelText := strings.ToUpper(entry.Level.String())
-	if len(levelText) < 5 {
-		levelText = levelText + strings.Repeat(" ", 5-len(levelText))
-	}
-	fmt.Fprintf(b, "%s%-5s%s ", levelColor, levelText, Reset)
+	fmt.Fprintf(b, "%s%-5s%s ", getLevelColor(entry.Level), levelText, Reset)
 
-	// 检测是否为 GORM 日志（消息以文件路径开头）
-	isGormLog := strings.Contains(entry.Message, "/") &&
-		(strings.Contains(entry.Message, ".go:") || strings.Contains(entry.Message, "[") && strings.Contains(entry.Message, "ms]"))
-
-	// 3. Caller 和请求 ID（仅非 GORM 日志显示）
-	if !isGormLog {
-		if caller, ok := entry.Data["caller"].(string); ok && caller != "" {
-			// Caller 路径（蓝色 - 与 GORM 一致，可点击）
-			fmt.Fprintf(b, "%s%s%s ", Blue, caller, Reset)
-
-			// 请求 ID（如果存在，跟在 caller 后面，黄色）
-			if requestID, ok := entry.Data["x-request-id"].(string); ok && requestID != "" {
-				// 截取请求 ID 前 8 位
-				shortID := requestID
-				if len(requestID) > 8 {
-					shortID = requestID[:8]
-				}
-				fmt.Fprintf(b, "%sreq:%s%s ", Yellow, shortID, Reset)
-			}
-		}
-	}
-
-	// 4. 主要消息
-	if isGormLog {
-		// GORM 日志：直接输出，不缩进（已经带路径）
-		fmt.Fprintf(b, "%s", formatGormLog(entry.Message))
+	if isGORMMessage(entry.Message) {
+		b.WriteString(formatGormLog(entry.Message))
 	} else {
-		// 普通日志：直接输出
-		fmt.Fprintf(b, "%s", entry.Message)
+		writeConsoleCaller(b, entry.Data)
+		b.WriteString(entry.Message)
 	}
+	writeConsoleFields(b, entry)
+	b.WriteByte('\n')
+	return b.Bytes(), nil
+}
 
-	// 5. 关键字段（GORM 风格 - 黄色时间 + 蓝色加粗 rows）
+func isGORMMessage(message string) bool {
+	return strings.Contains(message, "/") &&
+		(strings.Contains(message, ".go:") || strings.Contains(message, "[") && strings.Contains(message, "ms]"))
+}
+
+func writeConsoleCaller(b *bytes.Buffer, fields logrus.Fields) {
+	caller, ok := fields["caller"].(string)
+	if !ok || caller == "" {
+		return
+	}
+	fmt.Fprintf(b, "%s%s%s ", Blue, caller, Reset)
+	if requestID, ok := fields["x-request-id"].(string); ok && requestID != "" {
+		fmt.Fprintf(b, "%sreq:%s%s ", Yellow, requestID[:min(len(requestID), 8)], Reset)
+	}
+}
+
+func writeConsoleFields(b *bytes.Buffer, entry *logrus.Entry) {
 	var keyFields []string
-	// 如果消息中已包含 method 和 path（如 "GET /api/v1/sys-api"），则跳过这两个字段避免重复
 	skipMethodPath := strings.Contains(entry.Message, " /")
-	fieldOrder := []string{"status", "latency", "method", "path", "ip", "user_id", "user_name"}
-
+	fieldOrder := [...]string{"status", "latency", "method", "path", "ip", "user_id", "user_name"}
 	for _, key := range fieldOrder {
-		// 跳过已在消息中显示的 method 和 path
 		if skipMethodPath && (key == "method" || key == "path") {
 			continue
 		}
-		if val, ok := entry.Data[key]; ok {
-			keyFields = append(keyFields, formatField(key, val))
+		if value, ok := entry.Data[key]; ok {
+			keyFields = append(keyFields, formatField(key, value))
 		}
 	}
-
 	if len(keyFields) > 0 {
-		// 关键字段用空格分隔
 		fmt.Fprintf(b, " %s", strings.Join(keyFields, " "))
 	}
-
-	// 6. 其他字段（次要，放在新行，灰色）
 	var otherFields []string
-	for key, val := range entry.Data {
-		// 跳过已处理的字段和内置字段
+	for key, value := range entry.Data {
 		if isKeyField(key) || key == "logger" || key == "caller" || key == "x-request-id" {
 			continue
 		}
-		otherFields = append(otherFields, fmt.Sprintf("%s%s=%s%v", Gray, key, Reset, val))
+		otherFields = append(otherFields, fmt.Sprintf("%s%s=%s%v", Gray, key, Reset, value))
 	}
-
 	if len(otherFields) > 0 {
-		sort.Strings(otherFields) // 字母排序
+		sort.Strings(otherFields)
 		fmt.Fprintf(b, "\n      %s", strings.Join(otherFields, " "))
 	}
-
-	b.WriteByte('\n')
-	return b.Bytes(), nil
 }
 
 // getLevelColor 获取日志级别对应的颜色（深色背景优化）
@@ -203,14 +172,10 @@ func formatField(key string, val any) string {
 // 性能分级：< 1s 黄色（正常），>= 1s 红色（警示）
 func formatDuration(d time.Duration) string {
 	ms := float64(d.Nanoseconds()) / 1e6
-	if ms < 1 {
+	if ms < 1000 {
 		return fmt.Sprintf("%s[%.3fms]%s", Yellow, ms, Reset)
-	} else if ms < 1000 {
-		return fmt.Sprintf("%s[%.3fms]%s", Yellow, ms, Reset)
-	} else {
-		// 超过 1 秒用红色警示（不加粗）
-		return fmt.Sprintf("%s[%.3fs]%s", Red, ms/1000, Reset)
 	}
+	return fmt.Sprintf("%s[%.3fs]%s", Red, ms/1000, Reset)
 }
 
 // isKeyField 判断是否为关键字段

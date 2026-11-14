@@ -31,11 +31,6 @@ func (u *BaseUser) GetPasswordHash() string {
 	return passwordHash
 }
 
-// generateSalt assigns a fresh random salt.
-func (u *BaseUser) generateSalt() {
-	u.Salt = pkg.GenerateRandomKey16()
-}
-
 // Verify loads the row matching u.Username from tableName and reports
 // whether u.Password (already hashed into PasswordHash via SetPassword)
 // matches what is stored.
@@ -50,4 +45,9 @@ func (u *BaseUser) Verify(db *gorm.DB, tableName string) bool {
 		return false
 	}
 	return u.GetPasswordHash() == u.PasswordHash
+}
+
+// generateSalt assigns a fresh random salt.
+func (u *BaseUser) generateSalt() {
+	u.Salt = pkg.GenerateRandomKey16()
 }

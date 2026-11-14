@@ -55,7 +55,7 @@ func IsNotExistMkDir(src string) error {
 
 // MkDir 新建文件夹
 func MkDir(src string) error {
-	err := os.MkdirAll(src, os.ModePerm)
+	err := os.MkdirAll(src, 0o750)
 	if err != nil {
 		return err
 	}

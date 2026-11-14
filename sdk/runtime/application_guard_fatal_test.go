@@ -48,9 +48,8 @@ func TestGuardChild(t *testing.T) {
 
 	case "fatal-silent-logger":
 		// A logger that drops everything, including FatalLevel. This is the
-		// reason the guard does not call Helper.Fatalf: that method returns
-		// without exiting when the level filters it out, which would turn
-		// "must not start" into "started anyway, quietly".
+		// reason fatal propagation is independent from the helper: changing
+		// logging policy must never turn a required failure into success.
 		app.SetLogger(stdoutLogger{level: logger.FatalLevel + 1})
 		app.SetBeforeWith(func() { panic("boom") }, WithFatal())
 		app.RunBefore()
@@ -64,6 +63,7 @@ func TestGuardChild(t *testing.T) {
 		app.SetShutdown(func(context.Context) { fmt.Println("CLEANUP-AFTER-THE-PANIC") })
 		app.SetShutdown(func(context.Context) { panic("the pool is already closed") },
 			WithFatal(), WithName("pool-close"))
+		app.SetPhase(BeforeExit, func() { panic("phase cleanup failed") }, WithFatal())
 		if err := app.RunShutdown(context.Background()); err != nil {
 			fmt.Println("UNEXPECTED-ERROR", err)
 		}
@@ -109,8 +109,8 @@ func runGuardChild(t *testing.T, scenario string) (string, int) {
 func TestFatalCallbackExitsTheProcess(t *testing.T) {
 	out, code := runGuardChild(t, "fatal")
 
-	if code != 1 {
-		t.Errorf("the child exited with %d, want 1\n%s", code, out)
+	if code != 2 {
+		t.Errorf("the child exited with %d, want 2\n%s", code, out)
 	}
 	for _, want := range []string{"db-check", "the database is not reachable", "application_guard_fatal_test.go"} {
 		if !strings.Contains(out, want) {
@@ -131,8 +131,8 @@ func TestFatalCallbackExitsTheProcess(t *testing.T) {
 func TestFatalExitDoesNotDependOnTheLogLevel(t *testing.T) {
 	out, code := runGuardChild(t, "fatal-silent-logger")
 
-	if code != 1 {
-		t.Errorf("the child exited with %d, want 1\n%s", code, out)
+	if code != 2 {
+		t.Errorf("the child exited with %d, want 2\n%s", code, out)
 	}
 	if strings.Contains(out, "MUST-NOT-REACH") {
 		t.Errorf("a filtered log level let the process start anyway:\n%s", out)
@@ -161,8 +161,8 @@ func TestGoroutinePanicEscapesTheGuard(t *testing.T) {
 // The in-process half: the same decision, observed through the exit seam, so
 // the branch is covered by the normal test run as well as by the subprocess.
 //
-// The stub returns where os.Exit would not, so execution continues past it -
-// that is an artefact of the seam, not the behaviour under test.
+// The stub returns where the production seam panics, so execution continues
+// past it only to inspect the requested fatal decision.
 func TestFatalCallbackCallsExitWithOne(t *testing.T) {
 	app := New()
 	captureLogs(t, app)
@@ -197,5 +197,32 @@ func TestDefaultCallbackNeverExits(t *testing.T) {
 
 	if called {
 		t.Error("a callback registered without WithFatal must not bring the process down")
+	}
+}
+
+func TestFatalCallbackEscapesNestedGuard(t *testing.T) {
+	app := New()
+	captureLogs(t, app)
+	app.SetPhase(BeforeRouter, func() { panic("required nested startup failed") }, WithFatal())
+	cleaned := false
+	app.SetBefore(func() {
+		defer func() { cleaned = true }()
+		app.RunPhase(BeforeRouter)
+	})
+	continued := false
+	app.SetBefore(func() { continued = true })
+	var recovered any
+	func() {
+		defer func() { recovered = recover() }()
+		app.RunBefore()
+	}()
+	if recovered == nil || continued {
+		t.Fatalf("nested fatal was swallowed: recovered=%v continued=%v", recovered, continued)
+	}
+	if _, ok := recovered.(*startupError); !ok {
+		t.Fatalf("nested guard changed the fatal panic: %T", recovered)
+	}
+	if !cleaned {
+		t.Fatal("startup panic skipped deferred host cleanup")
 	}
 }

@@ -49,10 +49,10 @@ func TestLargeIdentitySurvivesTheParser(t *testing.T) {
 	}
 	c.Set(jwtauth.JwtPayloadKey, claims)
 
-	if got := UserIDString(c); got != identityBeyondFloat64 {
+	if got := IDString(c); got != identityBeyondFloat64 {
 		t.Fatalf("identity came back as %s, want %s", got, identityBeyondFloat64)
 	}
-	if got := UserID(c); int64(got) != 9007199254740993 {
+	if got := ID(c); int64(got) != 9007199254740993 {
 		t.Fatalf("identity came back as %d, want 9007199254740993", got)
 	}
 }

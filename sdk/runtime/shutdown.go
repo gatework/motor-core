@@ -30,8 +30,8 @@ import (
 // that moment on. Calling it as the first step of the shutdown path is what
 // covers the window before then, which is the wider one: it spans the whole
 // of the HTTP server's own graceful shutdown.
-func (e *Application) BeginShutdown() {
-	e.shuttingDown.Store(true)
+func (a *Application) BeginShutdown() {
+	a.shuttingDown.Store(true)
 }
 
 // SetShutdown registers a callback to run on the way out, once the server has
@@ -54,17 +54,17 @@ func (e *Application) BeginShutdown() {
 // the option is for. The callback is kept and the option is reported, because
 // refusing the registration would mean one mistyped option costs you the
 // cleanup entirely - silently.
-func (e *Application) SetShutdown(f func(context.Context), opts ...CallbackOption) {
+func (a *Application) SetShutdown(f func(context.Context), opts ...CallbackOption) {
 	site := callerSite(2)
 	cb := newCallback(nil, site, opts)
 	cb.ctxFn = f
 	if cb.fatal {
 		cb.fatal = false
-		e.log().Errorf("runtime: WithFatal ignored on the shutdown callback %s - exiting from inside "+
+		a.log().Errorf("runtime: WithFatal ignored on the shutdown callback %s - exiting from inside "+
 			"cleanup would skip every callback after it; the callback is registered without it", cb.label())
 	}
 	i, _ := BeforeExit.index()
-	e.register(&e.phases[i], cb, "SetShutdown", "RunShutdown")
+	a.register(&a.phases[i], cb, "SetShutdown", "RunShutdown")
 }
 
 // RunShutdown runs the BeforeExit callbacks, in reverse registration order,
@@ -84,18 +84,18 @@ func (e *Application) SetShutdown(f func(context.Context), opts ...CallbackOptio
 //
 // With nothing registered it returns nil immediately, without a goroutine and
 // without consulting the context: nothing to run is not a timeout.
-func (e *Application) RunShutdown(ctx context.Context) error {
+func (a *Application) RunShutdown(ctx context.Context) error {
 	if ctx == nil {
 		// A nil context is a bug in the caller, but these callbacks are the
 		// cleanup: panicking here would skip all of them to report it.
 		ctx = context.Background()
 	}
-	e.BeginShutdown()
+	a.BeginShutdown()
 	i, _ := BeforeExit.index()
 
-	e.mux.Lock()
-	pending := e.phases[i].takePendingLocked()
-	e.mux.Unlock()
+	a.mux.Lock()
+	pending := a.phases[i].takePendingLocked()
+	a.mux.Unlock()
 
 	if len(pending) == 0 {
 		return nil
@@ -109,10 +109,10 @@ func (e *Application) RunShutdown(ctx context.Context) error {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		log := e.log()
+		log := a.log()
 		for j := range pending {
 			current.Store(int32(j) + 1)
-			e.invoke(BeforeExit.String(), pending[j].bound(ctx), log)
+			a.invoke(BeforeExit.String(), pending[j].bound(ctx), log)
 		}
 	}()
 
@@ -132,7 +132,7 @@ func (e *Application) RunShutdown(ctx context.Context) error {
 		if n := current.Load(); n > 0 {
 			blame = pending[n-1].label() + " was still running"
 		}
-		e.log().Errorf("runtime: the shutdown budget ran out - %s. The wait is over, the callback is not: "+
+		a.log().Errorf("runtime: the shutdown budget ran out - %s. The wait is over, the callback is not: "+
 			"it keeps going until the process exits, and anything it half-wrote stays half-written", blame)
 		return ctx.Err()
 	}

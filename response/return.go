@@ -8,6 +8,7 @@ import (
 	"github.com/gatework/motor-core/sdk/pkg"
 )
 
+// Default is the response prototype copied by the package helpers.
 var Default = &response{}
 
 // Error 失败数据处理
@@ -52,7 +53,7 @@ func PageOK(c *gin.Context, result any, count int, pageIndex int, pageSize int, 
 	OK(c, res, msg)
 }
 
-// Custum 兼容函数
+// Custom writes a custom response map with its request ID.
 func Custom(c *gin.Context, data gin.H) {
 	data["requestId"] = pkg.RequestID(c)
 	c.Set("result", data)

@@ -29,6 +29,7 @@ func newDefault() *Text {
 	return NewLogger(WithLevel(level))
 }
 
+// NewLogger constructs a text adapter with caller-owned output writers.
 func NewLogger(opts ...Option) *Text {
 	options := resolveOptions(opts)
 	if options.Out == nil {
@@ -38,8 +39,13 @@ func NewLogger(opts ...Option) *Text {
 	return &Text{root: newRoot(sink, options)}
 }
 
-func (l *textSink) Enabled(level Level) bool    { return l.opts.Level.Enabled(level) }
+// Enabled reports whether the wrapped logger accepts level.
+func (l *textSink) Enabled(level Level) bool { return l.opts.Level.Enabled(level) }
+
+// With returns a field view that borrows the logger resources.
 func (l *textSink) With(fields ...Field) Logger { return bind(l, fields) }
+
+// Log records an entry with per-call context and structured fields.
 func (l *textSink) Log(ctx context.Context, level Level, message string, fields ...Field) {
 	if !l.Enabled(level) {
 		return
@@ -65,12 +71,16 @@ func (l *textSink) Log(ctx context.Context, level Level, message string, fields 
 	line.WriteByte('\n')
 	_, _ = io.WriteString(l.opts.Out, line.String())
 }
+
+// Close completes owned work and closes the wrapped root once.
 func (l *textSink) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.closed = true
 	return syncOutput(l.opts.Out)
 }
+
+// Sync waits for accepted entries and synchronizes the wrapped output.
 func (l *textSink) Sync() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()

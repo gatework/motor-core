@@ -36,6 +36,7 @@ type logrusSink struct {
 	closed bool
 }
 
+// NewLogrusLogger constructs a Logrus adapter and reports invalid settings or output failures.
 func NewLogrusLogger(opts ...Option) (*Logrus, error) {
 	options := resolveOptions(opts)
 	if err := validateOptions(options); err != nil {
@@ -75,8 +76,13 @@ func NewLogrusLogger(opts ...Option) (*Logrus, error) {
 	return &Logrus{root: newRoot(sink, options), sink: sink}, nil
 }
 
-func (l *logrusSink) Enabled(level Level) bool    { return l.logger.IsLevelEnabled(toLogrusLevel(level)) }
+// Enabled reports whether the wrapped logger accepts level.
+func (l *logrusSink) Enabled(level Level) bool { return l.logger.IsLevelEnabled(toLogrusLevel(level)) }
+
+// With returns a field view that borrows the logger resources.
 func (l *logrusSink) With(fields ...Field) Logger { return bind(l, fields) }
+
+// Log records an entry with per-call context and structured fields.
 func (l *logrusSink) Log(ctx context.Context, level Level, message string, fields ...Field) {
 	if !l.Enabled(level) {
 		return
@@ -102,6 +108,8 @@ func (l *logrusSink) Log(ctx context.Context, level Level, message string, field
 	// Log only records the entry. Process termination belongs to Helper.Fatal.
 	entry.Log(toLogrusLevel(level), message)
 }
+
+// Sync waits for accepted entries and synchronizes the wrapped output.
 func (l *logrusSink) Sync() error {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
@@ -110,6 +118,8 @@ func (l *logrusSink) Sync() error {
 	}
 	return syncOutput(l.opts.Out)
 }
+
+// Close completes owned work and closes the wrapped root once.
 func (l *logrusSink) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -170,8 +180,13 @@ func toLogrusFields(fields []Field) logrus.Fields {
 	return values
 }
 
-func (l *Logrus) AddHook(hook logrus.Hook)                { l.sink.logger.AddHook(hook) }
-func (l *Logrus) GetLogrusLogger() *logrus.Logger         { return l.sink.logger }
+// AddHook registers a Logrus hook on the underlying adapter.
+func (l *Logrus) AddHook(hook logrus.Hook) { l.sink.logger.AddHook(hook) }
+
+// GetLogrusLogger returns the underlying Logrus logger for host-specific configuration.
+func (l *Logrus) GetLogrusLogger() *logrus.Logger { return l.sink.logger }
+
+// SetFormatter replaces the underlying Logrus formatter.
 func (l *Logrus) SetFormatter(formatter logrus.Formatter) { l.sink.logger.SetFormatter(formatter) }
 
 // SentryHook Sentry 错误上报 Hook
@@ -179,6 +194,7 @@ type SentryHook struct {
 	levels []logrus.Level
 }
 
+// NewSentryHook constructs a hook placeholder; external Sentry delivery is not implemented.
 func NewSentryHook() *SentryHook {
 	return &SentryHook{
 		levels: []logrus.Level{
@@ -189,10 +205,12 @@ func NewSentryHook() *SentryHook {
 	}
 }
 
+// Levels returns the Logrus levels handled by this hook.
 func (h *SentryHook) Levels() []logrus.Level {
 	return h.levels
 }
 
+// Fire leaves the entry unchanged; external delivery is not implemented.
 func (h *SentryHook) Fire(entry *logrus.Entry) error {
 	// TODO: 集成 Sentry SDK
 	// sentry.CaptureException(entry)
@@ -206,6 +224,7 @@ type ElasticsearchHook struct {
 	levels []logrus.Level
 }
 
+// NewElasticsearchHook constructs a hook placeholder; external Elasticsearch delivery is not implemented.
 func NewElasticsearchHook(client any, index string) *ElasticsearchHook {
 	return &ElasticsearchHook{
 		client: client,
@@ -214,10 +233,12 @@ func NewElasticsearchHook(client any, index string) *ElasticsearchHook {
 	}
 }
 
+// Levels returns the Logrus levels handled by this hook.
 func (h *ElasticsearchHook) Levels() []logrus.Level {
 	return h.levels
 }
 
+// Fire leaves the entry unchanged; external delivery is not implemented.
 func (h *ElasticsearchHook) Fire(entry *logrus.Entry) error {
 	// TODO: 将日志发送到 Elasticsearch
 	// h.client.Index(h.index, entry)
@@ -229,14 +250,17 @@ type CallerHook struct {
 	skip int
 }
 
+// NewCallerHook constructs a hook that selects the first caller outside logging internals.
 func NewCallerHook(skip int) *CallerHook {
 	return &CallerHook{skip: skip}
 }
 
+// Levels returns the Logrus levels handled by this hook.
 func (h *CallerHook) Levels() []logrus.Level {
 	return logrus.AllLevels
 }
 
+// Fire processes a Logrus entry through this hook.
 func (h *CallerHook) Fire(entry *logrus.Entry) error {
 	// 获取真实的调用者信息
 	// 从调用栈中查找第一个非 logger 包的调用者
@@ -281,16 +305,19 @@ type MetricsHook struct {
 	levels []logrus.Level
 }
 
+// NewMetricsHook constructs a hook placeholder; metric recording is not implemented.
 func NewMetricsHook() *MetricsHook {
 	return &MetricsHook{
 		levels: logrus.AllLevels,
 	}
 }
 
+// Levels returns the Logrus levels handled by this hook.
 func (h *MetricsHook) Levels() []logrus.Level {
 	return h.levels
 }
 
+// Fire leaves the entry unchanged; external delivery is not implemented.
 func (h *MetricsHook) Fire(entry *logrus.Entry) error {
 	// TODO: 记录 Prometheus 指标
 	// logCounter.WithLabelValues(entry.Level.String()).Inc()

@@ -31,7 +31,8 @@ var mappingPlans sync.Map
 func planMapping(typ reflect.Type, tag string) mappingPlan {
 	key := mappingKey{typ: typ, tag: tag}
 	if plan, ok := mappingPlans.Load(key); ok {
-		return plan.(mappingPlan)
+		cached, _ := plan.(mappingPlan)
+		return cached
 	}
 	active := make(map[reflect.Type]bool)
 	var walk func(reflect.Type) mappingPlan
@@ -54,7 +55,6 @@ func planMapping(typ reflect.Type, tag string) mappingPlan {
 		defer delete(active, t)
 		var plan mappingPlan
 		for field := range t.Fields() {
-			field := field
 			if field.PkgPath != "" && !field.Anonymous {
 				continue
 			}
@@ -70,7 +70,8 @@ func planMapping(typ reflect.Type, tag string) mappingPlan {
 	}
 	plan := walk(typ)
 	actual, _ := mappingPlans.LoadOrStore(key, plan)
-	return actual.(mappingPlan)
+	cached, _ := actual.(mappingPlan)
+	return cached
 }
 
 func mapRequestValues(dst any, values map[string][]string, tag string) error {

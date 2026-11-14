@@ -215,7 +215,7 @@ func BenchmarkSampling(b *testing.B) {
 	samplingLogger := NewSamplingLogger(baseLogger, DefaultSamplingConfig)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		samplingLogger.Log(context.Background(), InfoLevel, "Benchmark log")
 	}
 }
@@ -233,7 +233,7 @@ func BenchmarkSanitizer(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		sanitizerLogger.With(FieldsFromMap(fields)...).Log(context.Background(), InfoLevel, "Benchmark log")
 	}
 }
@@ -245,7 +245,7 @@ func BenchmarkAsync(b *testing.B) {
 	asyncLogger := NewAsyncLogger(baseLogger, DefaultAsyncConfig)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		asyncLogger.Log(context.Background(), InfoLevel, "Benchmark log")
 	}
 

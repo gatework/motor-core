@@ -8,8 +8,8 @@ import (
 )
 
 type verifyUser struct {
-	ID uint `gorm:"primarykey"`
 	BaseUser
+	ID uint `gorm:"primarykey"`
 }
 
 func (verifyUser) TableName() string { return "verify_user" }

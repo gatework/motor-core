@@ -27,6 +27,7 @@ func BenchmarkManagerSend(b *testing.B) {
 }
 
 func benchmarkManagerSend(b *testing.B, groupCount int) {
+	b.Helper()
 	m, err := New()
 	if err != nil {
 		b.Fatal(err)
@@ -65,7 +66,10 @@ func benchmarkManagerSend(b *testing.B, groupCount int) {
 		srv.Close()
 	}()
 	for group := range groupCount {
-		peer, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http"), nil)
+		peer, response, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http"), nil)
+		if response != nil {
+			_ = response.Body.Close()
+		}
 		if err != nil {
 			b.Fatal(err)
 		}

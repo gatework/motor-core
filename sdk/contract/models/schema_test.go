@@ -16,12 +16,12 @@ import (
 // comparable.
 type probeRow struct {
 	Model
-	Name string `json:"name" gorm:"size:64;comment:name"`
 	ControlBy
 	ModelTime
+	Name string `json:"name" gorm:"size:64;comment:name"`
 }
 
-func (probeRow) TableName() string         { return "spike_row" }
+func (*probeRow) TableName() string        { return "spike_row" }
 func (e *probeRow) GetID() any             { return e.ID }
 func (e *probeRow) Generate() ActiveRecord { o := *e; return &o }
 
@@ -95,7 +95,7 @@ func TestSchemaMatchesFrozenGolden(t *testing.T) {
 // consumer that reads struct tags or does field-name based reflection over
 // its own model depends on it.
 func TestEmbeddedFieldNames(t *testing.T) {
-	want := []string{"Model", "Name", "ControlBy", "ModelTime"}
+	want := []string{"Model", "ControlBy", "ModelTime", "Name"}
 	rt := reflect.TypeFor[probeRow]()
 	got := make([]string, 0, rt.NumField())
 	for field := range rt.Fields() {

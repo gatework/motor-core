@@ -22,6 +22,7 @@ type GeneralDelDto struct {
 	IDs []int `json:"ids"`
 }
 
+// GetIDs returns the positive resource IDs selected for deletion.
 func (g GeneralDelDto) GetIDs() []int {
 	ids := make([]int, 0)
 	// ID used to be appended again inside an else branch below: passing only
@@ -63,7 +64,7 @@ func MakeCondition(q any) func(db *gorm.DB) *gorm.DB {
 	return func(db *gorm.DB) *gorm.DB {
 		condition, err := search.Resolve(db.Name(), q)
 		if err != nil {
-			db.AddError(err)
+			_ = db.AddError(err) // GORM carries the accumulated error on the returned handle.
 			return db
 		}
 		apply := func(c search.Condition) {
