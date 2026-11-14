@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
@@ -15,12 +16,82 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
+type mappingKey struct {
+	typ reflect.Type
+	tag string
+}
+
+type mappingPlan struct {
+	tagged bool
+	cyclic bool
+}
+
+var mappingPlans sync.Map
+
+func planMapping(typ reflect.Type, tag string) mappingPlan {
+	key := mappingKey{typ: typ, tag: tag}
+	if plan, ok := mappingPlans.Load(key); ok {
+		return plan.(mappingPlan)
+	}
+	active := make(map[reflect.Type]bool)
+	var walk func(reflect.Type) mappingPlan
+	walk = func(t reflect.Type) mappingPlan {
+		for t.Kind() == reflect.Pointer {
+			if active[t] {
+				return mappingPlan{cyclic: true}
+			}
+			active[t] = true
+			defer delete(active, t)
+			t = t.Elem()
+		}
+		if t.Kind() != reflect.Struct {
+			return mappingPlan{}
+		}
+		if active[t] {
+			return mappingPlan{cyclic: true}
+		}
+		active[t] = true
+		defer delete(active, t)
+		var plan mappingPlan
+		for i := 0; i < t.NumField(); i++ {
+			field := t.Field(i)
+			if field.PkgPath != "" && !field.Anonymous {
+				continue
+			}
+			value, tagged := field.Tag.Lookup(tag)
+			if value == "-" {
+				continue
+			}
+			child := walk(field.Type)
+			plan.tagged = plan.tagged || tagged || child.tagged
+			plan.cyclic = plan.cyclic || child.cyclic
+		}
+		return plan
+	}
+	plan := walk(typ)
+	actual, _ := mappingPlans.LoadOrStore(key, plan)
+	return actual.(mappingPlan)
+}
+
+func mapRequestValues(dst any, values map[string][]string, tag string) error {
+	plan := planMapping(reflect.TypeOf(dst), tag)
+	if !plan.tagged {
+		return nil
+	}
+	// Gin allocates pointer children while walking struct fields, including
+	// empty mappings. Reject recursive shapes before that walk can overflow.
+	if plan.cyclic {
+		return fmt.Errorf("recursive %s mapping is not supported", tag)
+	}
+	return binding.MapFormWithTag(dst, values, tag)
+}
+
 func decodeRequest(c *gin.Context, dst any) error {
 	value := reflect.ValueOf(dst)
 	if !value.IsValid() || value.Kind() != reflect.Pointer || value.IsNil() || value.Elem().Kind() != reflect.Struct {
 		return errors.New("api: binding target must be a non-nil pointer to a struct")
 	}
-	if err := binding.MapFormWithTag(dst, c.Request.URL.Query(), "form"); err != nil {
+	if err := mapRequestValues(dst, c.Request.URL.Query(), "form"); err != nil {
 		return fmt.Errorf("api: decode query: %w", err)
 	}
 	if err := decodeBody(c, dst); err != nil && !errors.Is(err, io.EOF) {
@@ -30,7 +101,7 @@ func decodeRequest(c *gin.Context, dst any) error {
 	for _, param := range c.Params {
 		params[param.Key] = []string{param.Value}
 	}
-	if err := binding.MapFormWithTag(dst, params, "uri"); err != nil {
+	if err := mapRequestValues(dst, params, "uri"); err != nil {
 		return fmt.Errorf("api: decode uri: %w", err)
 	}
 	return nil
@@ -70,7 +141,7 @@ func decodeBody(c *gin.Context, dst any) error {
 		if err != nil {
 			return err
 		}
-		return binding.MapFormWithTag(dst, values, "form")
+		return mapRequestValues(dst, values, "form")
 	default:
 		return fmt.Errorf("unsupported content type %q", c.ContentType())
 	}

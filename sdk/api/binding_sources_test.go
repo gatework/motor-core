@@ -3,6 +3,10 @@ package api
 import (
 	"context"
 	"net/http/httptest"
+	"os"
+	"os/exec"
+	"reflect"
+	"runtime/debug"
 	"strings"
 	"testing"
 
@@ -100,5 +104,63 @@ func TestBindRejectsInvalidTargetAndCanceledRequest(t *testing.T) {
 	a.Context.Request = a.Context.Request.WithContext(ctx)
 	if err := a.Bind(&struct{}{}); err != context.Canceled {
 		t.Fatalf("error=%v", err)
+	}
+}
+
+func TestBindJSONOnlyRecursiveDTO(t *testing.T) {
+	if os.Getenv("MOTOR_TEST_RECURSIVE_BIND") != "1" {
+		executable, err := os.Executable()
+		if err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command(executable, "-test.run=^TestBindJSONOnlyRecursiveDTO$")
+		cmd.Env = append(os.Environ(), "MOTOR_TEST_RECURSIVE_BIND=1")
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("recursive DTO binding failed: %v\n%s", err, output)
+		}
+		return
+	}
+	// Bound the regression's stack growth so a broken mapper fails promptly
+	// inside this subprocess instead of consuming the test runner's stack.
+	debug.SetMaxStack(64 << 10)
+	type node struct {
+		Name string `json:"name"`
+		Next *node  `json:"next"`
+	}
+	request := requestAPI(t, "/items/7?ignored=value", "application/json", `{"name":"first","next":{"name":"second"}}`)
+	var dst node
+	if err := request.Bind(&dst); err != nil {
+		t.Fatal(err)
+	}
+	if dst.Name != "first" || dst.Next == nil || dst.Next.Name != "second" {
+		t.Fatalf("decoded=%+v", dst)
+	}
+}
+
+func TestBindRejectsRecursiveTaggedMapping(t *testing.T) {
+	type formNode struct {
+		Name string    `form:"name"`
+		Next *formNode `json:"next"`
+	}
+	type uriNode struct {
+		ID   int      `uri:"id"`
+		Next *uriNode `json:"next"`
+	}
+	for _, dst := range []any{&formNode{}, &uriNode{}} {
+		request := requestAPI(t, "/items/7", "application/json", `{}`)
+		if err := request.Bind(dst); err == nil {
+			t.Fatalf("accepted recursive tagged mapping %T", dst)
+		}
+	}
+}
+
+func TestPlanMappingRejectsPointerTypeCycle(t *testing.T) {
+	type link *link
+	typ := reflect.TypeOf(struct {
+		Value link `form:"value"`
+	}{})
+	plan := planMapping(typ, "form")
+	if !plan.tagged || !plan.cyclic {
+		t.Fatalf("pointer cycle plan=%+v", plan)
 	}
 }
