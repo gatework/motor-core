@@ -10,7 +10,7 @@ import (
 	"github.com/gin-gonic/gin/binding"
 )
 
-func requestAPI(t *testing.T, target, contentType, body string) *API {
+func requestAPI(t testing.TB, target, contentType, body string) *API {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
