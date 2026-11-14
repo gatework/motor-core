@@ -53,109 +53,51 @@ go get -u github.com/gatework/motor-core
 ```go
 package main
 
-import "github.com/gatework/motor-core/logger"
+import (
+    "context"
+    "log"
 
-func main() {
-    // Create Logrus logger instance
-    log := logger.NewLogrusLogger(
-        logger.WithPath("logs/app.log"),
-        logger.WithLevel(logger.InfoLevel),
-    )
-    
-    log.Log(logger.InfoLevel, "Application started")
-    log.Fields(map[string]interface{}{
-        "user_id": 12345,
-        "action":  "login",
-    }).Log(logger.InfoLevel, "User action")
-}
-```
-
-### High-Performance Async Logger
-
-```go
-// Create async logger (recommended for high-concurrency scenarios)
-baseLog := logger.NewLogrusLogger(
-    logger.WithPath("logs/app.log"),
-    logger.WithLevel(logger.InfoLevel),
+    "github.com/gatework/motor-core/logger"
 )
 
-asyncLog := logger.NewAsyncLogger(baseLog, logger.DefaultAsyncConfig)
-defer asyncLog.(interface{ Close() error }).Close()
-
-asyncLog.Log(logger.InfoLevel, "High performance logging")
-```
-
-### Sampling Logger (Frequency Control)
-
-```go
-// Create sampling logger (auto-filter high-frequency duplicate logs)
-samplingLog := logger.NewSamplingLogger(baseLog, logger.DefaultSamplingConfig)
-
-// Only logs first 100 per second, then 1 out of every 100
-for i := 0; i < 10000; i++ {
-    samplingLog.Log(logger.InfoLevel, "High frequency log")
-}
-```
-
-### Sanitizer Logger (Data Security)
-
-```go
-// Create sanitizer logger (auto-handle sensitive data)
-sanitizerLog := logger.NewSanitizerLogger(baseLog, logger.DefaultSanitizerConfig)
-
-sanitizerLog.Fields(map[string]interface{}{
-    "phone":    "13812345678",  // Auto-sanitized → "138****5678"
-    "password": "secret123",    // Auto-sanitized → "[REDACTED]"
-    "email":    "user@example.com", // Auto-sanitized → "u***@example.com"
-}).Log(logger.InfoLevel, "User login")
-```
-
-### Production-Grade Configuration (Recommended)
-
-```go
-// Combine: Sanitizer → Sampling → Async
-sanitized := logger.NewSanitizerLogger(baseLog, logger.DefaultSanitizerConfig)
-sampled := logger.NewSamplingLogger(sanitized, logger.DefaultSamplingConfig)
-asyncLog := logger.NewAsyncLogger(sampled, logger.DefaultAsyncConfig)
-defer asyncLog.(interface{ Close() error }).Close()
-
-// 34x performance boost + data security + frequency control
-asyncLog.Fields(map[string]interface{}{
-    "phone":   "13812345678",
-    "user_id": 12345,
-}).Log(logger.InfoLevel, "Production logging")
-```
-
----
-
-## 📦 Configuration Management
-
-### Read Configuration Files
-
-```go
-package main
-
-import "github.com/gatework/motor-core/config"
-
 func main() {
-    source := config.FileSource("config.json")
-    config.Setup(source, func() {
-        // Configuration change callback
-    })
+    root, err := logger.NewLogrusLogger(
+        logger.WithPath("logs/app.log"),
+        logger.WithLevel(logger.InfoLevel),
+        logger.WithEncoder("json"),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer root.Close()
+    root.With(logger.UserID(12345)).Log(context.Background(), logger.InfoLevel, "started")
 }
 ```
 
----
+See [structured logging](logger/README_ADVANCED.md) for sampling, redaction,
+async delivery, and resource ownership. Keep the concrete root for Close/Sync;
+field views borrow it. Configuration watchers publish settings only: hosts
+explicitly create, inject, and retire application resources.
 
-## 📊 Performance Metrics
+## Configuration
 
-| Feature | Performance Boost | Latency | Memory | Use Case |
-|---------|------------------|---------|--------|----------|
-| Production Config | 34x | 98ns | 149 B/op | Production environments |
+```go
+manager, err := config.New(config.WithSource(file.NewSource(file.WithPath("config.json"))))
+if err != nil {
+    return err
+}
+defer manager.Close()
+```
 
-**Test Environment:** Apple M1 Pro | Go 1.27.4.1 | Race Detector verified
+The example uses `config` and `config/source/file` from this module. See
+[configuration](config/README.md) and [migration](docs/migration/motor-core.md).
 
----
+## Performance measurement
+
+Run `make bench` for a smoke check. Use `BenchmarkDelivery` to compare async
+admission and actual sink delivery: it reports written/s and dropped/op and
+includes draining accepted entries. Sampling and dropping are not throughput
+gains. Compare on the same machine and toolchain, including p99 under mixed load.
 
 ## 🧪 Testing
 
