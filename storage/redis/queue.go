@@ -293,14 +293,15 @@ func (q *Queue) Publish(ctx context.Context, msg storage.Message) error {
 		return err
 	}
 
-	q.mu.RLock()
-	closed := q.closed
-	_, known := q.groups[msg.Topic]
-	q.mu.RUnlock()
-
-	if closed {
+	q.mu.Lock()
+	if q.closed {
+		q.mu.Unlock()
 		return storage.ErrQueueClosed
 	}
+	_, known := q.groups[msg.Topic]
+	q.operations.Add(1)
+	q.mu.Unlock()
+	defer q.operations.Done()
 	if !known {
 		// The subscriber may live in another process, so a missing local
 		// registration is not evidence that nobody consumes the topic. The
