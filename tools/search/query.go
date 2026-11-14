@@ -180,21 +180,29 @@ func Resolve(driver string, q any) (Condition, error) {
 	return out, nil
 }
 
-func resolveValue(v reflect.Value, postgres bool, out *Condition, active []pointerVisit, joined bool) error {
+func unwrapValue(v reflect.Value, active []pointerVisit) (reflect.Value, []pointerVisit, error) {
 	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
 		if v.IsNil() {
-			return nil
+			return reflect.Value{}, active, nil
 		}
 		if v.Kind() == reflect.Pointer {
 			visit := pointerVisit{typ: v.Type(), ptr: v.Pointer()}
 			for _, prev := range active {
 				if prev == visit {
-					return fmt.Errorf("search: cyclic query value of type %s", v.Type())
+					return reflect.Value{}, active, fmt.Errorf("search: cyclic query value of type %s", v.Type())
 				}
 			}
 			active = append(active, visit)
 		}
 		v = v.Elem()
+	}
+	return v, active, nil
+}
+
+func resolveValue(v reflect.Value, postgres bool, out *Condition, active []pointerVisit, joined bool) error {
+	v, active, err := unwrapValue(v, active)
+	if err != nil {
+		return err
 	}
 	if v.Kind() != reflect.Struct {
 		return nil
@@ -225,11 +233,9 @@ func resolveValue(v reflect.Value, postgres bool, out *Condition, active []point
 			out.Join = append(out.Join, Join{SQL: f.sql, Condition: child})
 			continue
 		}
-		for value.Kind() == reflect.Pointer || value.Kind() == reflect.Interface {
-			if value.IsNil() {
-				break
-			}
-			value = value.Elem()
+		value, _, err = unwrapValue(value, active)
+		if err != nil {
+			return err
 		}
 		if !value.IsValid() {
 			continue

@@ -1,6 +1,9 @@
 package search
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestResolveSearchQueryAcceptsPointerAndSkipsScalarFields(t *testing.T) {
 	type query struct {
@@ -49,5 +52,33 @@ func TestResolveRejectsMalformedJoinAndPreservesRepeatedColumns(t *testing.T) {
 	cond, err := Resolve(MySQL, query)
 	if err != nil || len(cond.Where) != 2 || cond.Where[0].Args[0] != "a" || cond.Where[1].Args[0] != "b" {
 		t.Fatalf("conditions=%v error=%v", cond, err)
+	}
+}
+
+func TestResolveRejectsTaggedPointerCycle(t *testing.T) {
+	var cycle any
+	cycle = &cycle
+	query := struct {
+		Value any `search:"type:exact;column:id;table:users"`
+	}{Value: cycle}
+	result := make(chan error, 1)
+	go func() { _, err := Resolve(MySQL, query); result <- err }()
+	select {
+	case err := <-result:
+		if err == nil {
+			t.Fatal("accepted a cyclic tagged filter")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("cyclic tagged filter did not return")
+	}
+}
+
+func TestResolveSkipsTypedNilFilter(t *testing.T) {
+	query := struct {
+		Value any `search:"type:exact;column:id;table:users"`
+	}{Value: (*int)(nil)}
+	condition, err := Resolve(MySQL, query)
+	if err != nil || len(condition.Where) != 0 {
+		t.Fatalf("condition=%v error=%v", condition, err)
 	}
 }
