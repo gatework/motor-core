@@ -101,12 +101,16 @@ func (m *Manager) Run(ctx context.Context) error {
 	m.isRunning = true
 	m.mu.Unlock()
 	groups := make(map[string]map[string]*client)
+	clientCount := 0
+	statsChanged := false
 	closeClient := func(c *client) {
 		g := groups[c.group]
 		if g[c.id] != c {
 			return
 		}
 		delete(g, c.id)
+		clientCount--
+		statsChanged = true
 		if len(g) == 0 {
 			delete(groups, c.group)
 		}
@@ -115,11 +119,10 @@ func (m *Manager) Run(ctx context.Context) error {
 		close(c.outgoing)
 	}
 	publishStats := func() {
-		n := 0
-		for _, g := range groups {
-			n += len(g)
+		if statsChanged {
+			m.stats.Store(&counts{groups: len(groups), clients: clientCount})
+			statsChanged = false
 		}
-		m.stats.Store(&counts{groups: len(groups), clients: n})
 	}
 	defer func() {
 		m.mu.Lock()
@@ -164,6 +167,8 @@ func (m *Manager) Run(ctx context.Context) error {
 					groups[c.group] = make(map[string]*client)
 				}
 				groups[c.group][c.id] = c
+				clientCount++
+				statsChanged = true
 				c.conn.SetReadLimit(m.opts.maxMessageBytes)
 				m.workers.Add(2)
 				go func() { defer m.workers.Done(); m.read(ctx, c) }()

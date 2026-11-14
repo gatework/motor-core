@@ -233,3 +233,67 @@ func TestWriteBudgetDisconnectsStalledPeer(t *testing.T) {
 	}
 	waitForDisconnect(t, m)
 }
+
+func TestStatsTrackReplacementAndDisconnection(t *testing.T) {
+	m := runningManager(t)
+	assertStats := func(groups, clients int) {
+		t.Helper()
+		stats := m.Info()
+		if stats["groupLen"] != groups || stats["clientLen"] != clients {
+			t.Fatalf("membership stats = %v, want %d groups and %d clients", stats, groups, clients)
+		}
+	}
+	first, _ := dialedConnection(t)
+	second, _ := dialedConnection(t)
+	replacement, received := dialedConnection(t)
+	if err := m.Connect(t.Context(), "first", "group", first); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Connect(t.Context(), "second", "group", second); err != nil {
+		t.Fatal(err)
+	}
+	assertStats(1, 2)
+	if err := m.Connect(t.Context(), "first", "group", replacement); err != nil {
+		t.Fatal(err)
+	}
+	assertStats(1, 2)
+	if err := m.Send(t.Context(), "first", "group", []byte(`null`)); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-received:
+	case <-time.After(time.Second):
+		t.Fatal("replacement did not receive its message")
+	}
+	assertStats(1, 2)
+	if err := m.Disconnect(t.Context(), "second", "group"); err != nil {
+		t.Fatal(err)
+	}
+	assertStats(1, 1)
+	if err := m.Disconnect(t.Context(), "first", "group"); err != nil {
+		t.Fatal(err)
+	}
+	assertStats(0, 0)
+}
+
+func TestSlowClientRemovalUpdatesMembershipStats(t *testing.T) {
+	m := runningManager(t, WithWriteTimeout(10*time.Second))
+	_ = managedPeer(t, m)
+	payload := []byte(strings.Repeat("x", 4<<20))
+	for range 2048 {
+		err := m.submit(t.Context(), command{
+			kind: commandSend, id: "peer", group: "group", message: payload,
+		})
+		if errors.Is(err, ErrSlowClient) {
+			stats := m.Info()
+			if stats["groupLen"] != 0 || stats["clientLen"] != 0 {
+				t.Fatalf("slow client remained counted: %v", stats)
+			}
+			return
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Fatal("stalled connection never filled its send queue")
+}
