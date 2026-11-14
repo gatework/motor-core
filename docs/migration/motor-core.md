@@ -117,3 +117,38 @@ protoc -I errors --go_out=paths=source_relative:errors errors/errors.proto
 
 Historical release notes, migration fixtures, and upstream issue links retain
 old module names deliberately. They are not active import paths.
+
+## Runtime hardening API
+
+Go 1.27.4 is the minimum supported toolchain, including CI. No new module major
+version or release tag is introduced by this refactor.
+
+`API.Bind(dst)` selects one body decoder from Content-Type, merges query/body/URI
+in that order, and validates the final DTO. The variadic Gin binding parameter is
+removed. JSON, XML, YAML and URL-encoded forms are built in; complex multipart
+uploads and custom formats belong in explicit host code. URI fields take final
+precedence. The generic `pkg.Translate` and `API.Translate` model mapper are
+removed: use explicit assignments in application code.
+
+Public ID spellings use ID/IDs/GetID, including DTO/model contracts. Request ID
+resolution is named RequestID and is stable for the lifetime of a Gin request.
+JSON/URI field tags remain unchanged. ID result accessors return independent
+containers and do not accumulate URI values on repeated access.
+
+Settings watchers parse, validate and publish snapshots only. Logger.Open is an
+explicit owned-resource operation; the host selects, publishes, and closes
+logger roots. A configuration close or reload never retires a process logger.
+Empty or missing settings documents are rejected without replacing Current.
+
+Config.Set and reader.Values.Set return errors. Caller values are encoded outside
+configuration locks; failed writes preserve the previous value. Environment
+expansion operates on JSON string values, not serialized syntax: quotes,
+backslashes and newlines cannot inject configuration structure. Missing variables
+remain empty strings. Unquoted JSON template expressions are not supported.
+
+Network constructors return an instance and error for invalid options. Listener
+header and idle budgets default to 10s and 60s. WebSocket messages default to a
+1 MiB maximum and writes to a 10s deadline. Zero selects defaults; negative values
+are rejected. HTTP streaming and idle WebSocket connections do not acquire new
+whole-request or heartbeat timeouts. Use the new named network options to choose
+positive overrides.
