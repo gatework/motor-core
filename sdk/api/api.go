@@ -6,7 +6,6 @@ import (
 	vd "github.com/bytedance/go-tagexpr/v2/validator"
 	"github.com/gatework/motor-core/logger"
 	"github.com/gatework/motor-core/response"
-	"github.com/gatework/motor-core/sdk/pkg"
 	"github.com/gatework/motor-core/sdk/service"
 	"github.com/gatework/motor-core/storage"
 	"github.com/gatework/motor-core/tools/language"
@@ -103,10 +102,6 @@ func (e *API) PageOK(result any, count int, pageIndex int, pageSize int, msg str
 // Custom 兼容函数
 func (e *API) Custom(data gin.H) {
 	response.Custom(e.Context, data)
-}
-
-func (e API) Translate(form, to any) {
-	pkg.Translate(form, to)
 }
 
 // getAcceptLanguage reports the language the request asked for, falling back
