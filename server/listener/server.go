@@ -20,11 +20,25 @@ import (
 )
 
 type Server struct {
-	name      string
-	mutex     sync.Mutex
-	srv       *http.Server
-	opts      options
-	isStarted bool
+	name  string
+	mutex sync.Mutex
+	opts  options
+	run   *serverRun
+}
+
+type serverRun struct {
+	stop        chan struct{}
+	done        chan struct{}
+	cancelStart context.CancelFunc
+	stopOnce    sync.Once
+	err         error
+}
+
+func (r *serverRun) stopAccepting() {
+	r.stopOnce.Do(func() {
+		r.cancelStart()
+		close(r.stop)
+	})
 }
 
 // New 实例化
@@ -95,20 +109,30 @@ func (e *Server) String() string {
 	return e.name
 }
 
-// Run binds before reporting readiness and returns the serving failure, if any.
-func (e *Server) Run(ctx context.Context) error {
+// Run binds before reporting readiness and owns request draining until completion.
+func (e *Server) Run(ctx context.Context) (runErr error) {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	e.mutex.Lock()
-	if e.isStarted {
+	if e.run != nil {
 		e.mutex.Unlock()
 		return errors.New("listener: already running")
 	}
-	e.isStarted = true
+	startCtx, cancelStart := context.WithCancel(ctx)
+	run := &serverRun{stop: make(chan struct{}), done: make(chan struct{}), cancelStart: cancelStart}
+	e.run = run
 	opts := e.opts
 	e.mutex.Unlock()
-	defer func() { e.mutex.Lock(); e.isStarted = false; e.srv = nil; e.mutex.Unlock() }()
+	defer cancelStart()
+	defer func() {
+		e.mutex.Lock()
+		run.err = runErr
+		e.run = nil
+		close(run.done)
+		e.mutex.Unlock()
+	}()
+
 	var tlsConfig *tls.Config
 	if opts.keyFile != "" || opts.certFile != "" {
 		cert, err := tls.LoadX509KeyPair(opts.certFile, opts.keyFile)
@@ -118,53 +142,92 @@ func (e *Server) Run(ctx context.Context) error {
 		tlsConfig = &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
 	}
 	lc := net.ListenConfig{}
-	l, err := lc.Listen(ctx, "tcp", opts.addr)
+	l, err := lc.Listen(startCtx, "tcp", opts.addr)
 	if err != nil {
-		return err
+		select {
+		case <-run.stop:
+			return nil
+		default:
+			return err
+		}
 	}
 	defer l.Close()
 	srv := &http.Server{Handler: opts.handler, BaseContext: func(net.Listener) context.Context { return ctx }}
-	e.mutex.Lock()
-	e.srv = srv
-	e.mutex.Unlock()
 	if tlsConfig != nil {
 		l = tls.NewListener(l, tlsConfig)
 	}
-	done := make(chan error, 1)
-	go func() { done <- srv.Serve(l) }()
+	serving := make(chan error, 1)
+	go func() { serving <- srv.Serve(l) }()
+	if opts.endHook != nil {
+		defer opts.endHook()
+	}
 	if opts.startedHook != nil {
 		opts.startedHook()
 	}
+
+	var serveErr error
+	serveFinished := false
+	forceBudget := false
 	select {
-	case err = <-done:
+	case serveErr = <-serving:
+		serveFinished = true
+		forceBudget = !errors.Is(serveErr, http.ErrServerClosed)
+	case <-run.stop:
 	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-		defer cancel()
-		if shutdownErr := srv.Shutdown(shutdownCtx); shutdownErr != nil {
-			_ = srv.Close()
-			err = shutdownErr
-		}
-		serveErr := <-done
-		if err == nil {
-			err = serveErr
-		}
 	}
-	if opts.endHook != nil {
-		opts.endHook()
+	// The run owns the drain. A Shutdown caller's deadline only ends its wait,
+	// so a later caller can continue waiting for the same active requests.
+	drained := make(chan error, 1)
+	go func() { drained <- srv.Shutdown(context.WithoutCancel(ctx)) }()
+	runErr = waitForDrain(ctx, srv, drained, forceBudget)
+	if !serveFinished {
+		serveErr = <-serving
 	}
-	if errors.Is(err, http.ErrServerClosed) {
-		return nil
+	if !errors.Is(serveErr, http.ErrServerClosed) {
+		runErr = errors.Join(runErr, serveErr)
 	}
-	return err
+	return runErr
 }
 
-// Shutdown stops acceptance and waits for active HTTP requests.
+func waitForDrain(ctx context.Context, srv *http.Server, drained <-chan error, forceBudget bool) error {
+	if !forceBudget {
+		select {
+		case err := <-drained:
+			return err
+		case <-ctx.Done():
+		}
+	}
+	budget, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	select {
+	case err := <-drained:
+		return err
+	case <-budget.Done():
+		err := errors.Join(budget.Err(), srv.Close())
+		return errors.Join(err, <-drained)
+	}
+}
+
+// Shutdown stops acceptance and waits for this run's drain, within ctx's budget.
+// If the wait times out, a later call can keep waiting. Cancel the Run context to
+// force connection closure after its cleanup budget instead.
 func (e *Server) Shutdown(ctx context.Context) error {
 	e.mutex.Lock()
-	srv := e.srv
+	run := e.run
 	e.mutex.Unlock()
-	if srv == nil {
+	if run == nil {
 		return nil
 	}
-	return srv.Shutdown(ctx)
+	run.stopAccepting()
+	select {
+	case <-run.done:
+		return run.err
+	default:
+	}
+	select {
+	case <-run.done:
+		return run.err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
