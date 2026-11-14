@@ -127,7 +127,9 @@ version or release tag is introduced by this refactor.
 in that order, and validates the final DTO. The variadic Gin binding parameter is
 removed. JSON, XML, YAML and URL-encoded forms are built in; complex multipart
 uploads and custom formats belong in explicit host code. URI fields take final
-precedence. The generic `pkg.Translate` and `API.Translate` model mapper are
+precedence. Query/URI mapping runs only when the DTO declares the corresponding
+source tags. Recursive JSON-only DTOs are supported; recursive form/URI mapping
+shapes return an explicit error instead of entering the Gin mapper. The generic `pkg.Translate` and `API.Translate` model mapper are
 removed: use explicit assignments in application code.
 
 Public ID spellings use ID/IDs/GetID, including DTO/model contracts. Request ID
@@ -152,3 +154,9 @@ header and idle budgets default to 10s and 60s. WebSocket messages default to a
 are rejected. HTTP streaming and idle WebSocket connections do not acquire new
 whole-request or heartbeat timeouts. Use the new named network options to choose
 positive overrides.
+
+Performance work removes the per-command WebSocket group scan and caches request
+logger helpers using typed fields. Sink benchmarks report actual delivery and
+discard counts. The tested cache RWMutex candidate was rejected because mixed
+read/write p99 regressed; the cache implementation retains its previous mutex.
+Local timing results do not guarantee production latency across workloads.
