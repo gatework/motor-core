@@ -5,7 +5,7 @@ See [migration from go-admin-core](docs/migration/motor-core.md).
 
 Forked from [go-admin-team/go-admin-core](https://github.com/go-admin-team/go-admin-core).
 
-[![Go Version](https://img.shields.io/badge/Go-1.27.1+-00ADD8?style=flat&logo=go)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/Go-1.27.4+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja-JP.md)
@@ -48,7 +48,7 @@ Forked from [go-admin-team/go-admin-core](https://github.com/go-admin-team/go-ad
 go get -u github.com/gatework/motor-core
 ```
 
-**System Requirements:** Go 1.27.1 or higher (see the `go` directive in `go.mod`)
+**System Requirements:** Go 1.27.4 or higher (see the `go` directive in `go.mod`)
 
 ### Basic Logging
 
@@ -158,7 +158,7 @@ func main() {
 | Sampling Logger | 29x | 116ns | 16 B/op | High-frequency duplicate logs |
 | Production Config | 34x | 98ns | 149 B/op | Production environments |
 
-**Test Environment:** Apple M1 Pro | Go 1.27.1.1 | Race Detector verified
+**Test Environment:** Apple M1 Pro | Go 1.27.4.1 | Race Detector verified
 
 ---
 

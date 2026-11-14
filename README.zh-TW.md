@@ -5,7 +5,7 @@ See [migration from go-admin-core](docs/migration/motor-core.md).
 
 Forked from [go-admin-team/go-admin-core](https://github.com/go-admin-team/go-admin-core).
 
-[![Go Version](https://img.shields.io/badge/Go-1.27.1+-00ADD8?style=flat&logo=go)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/Go-1.27.4+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja-JP.md)
@@ -47,7 +47,7 @@ Forked from [go-admin-team/go-admin-core](https://github.com/go-admin-team/go-ad
 go get -u github.com/gatework/motor-core
 ```
 
-**系統需求:** Go 1.27.1 或更高版本（以 `go.mod` 中的 `go` 指令為準）
+**系統需求:** Go 1.27.4 或更高版本（以 `go.mod` 中的 `go` 指令為準）
 
 ### 基礎日誌用法
 
@@ -157,7 +157,7 @@ func main() {
 | 取樣日誌 | 29x | 116ns | 16 B/op | 高頻重複日誌 |
 | 正式環境設定 | 34x | 98ns | 149 B/op | 正式環境建議 |
 
-**測試環境:** Apple M1 Pro | Go 1.27.1.1 | 通過 Race Detector 驗證
+**測試環境:** Apple M1 Pro | Go 1.27.4.1 | 通過 Race Detector 驗證
 
 ---
 

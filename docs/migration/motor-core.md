@@ -2,7 +2,7 @@
 
 The module path is `github.com/gatework/motor-core`, without `/v2`.
 This is a new module identity, derived from upstream go-admin-core v2.
-The Go requirement remains 1.27.1. Future tags for this path must use the
+The Go requirement remains 1.27.4. Future tags for this path must use the
 v0 or v1 version series; upstream v2 tags describe the old module.
 
 The repository starts with a new root commit containing the refactored library;
