@@ -44,3 +44,7 @@ RELEASE_NOTES.md
 # Temporary cross-module integration workspace
 go.work
 go.work.sum
+
+# CI release artifacts
+/dist/
+__pycache__/

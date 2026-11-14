@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.1.0
+
+Initial independent Motor Core release, module `github.com/gatework/motor-core`.
+Requires Go1.27.4 or newer. Upstream attribution and Apache2.0 license are retained.
+
+- Use explicit application/request dependencies, final ID/DB naming, and no transition aliases.
+- Correct service/listener draining, Redis publish admission and pending retry fairness.
+- Keep settings publication separate from application logger ownership; reject invalid snapshots.
+- Safely encode configuration values and environment strings, and bind requests before validation.
+- Bound HTTP header/idle waits and WebSocket message/write resources.
+- Improve WebSocket membership statistics and reuse request loggers; retain regression and delivery benchmarks.
+- Introduce shared engineering checks and same-commit CI source-artifact releases.
+
+Breaking API migration: see [migration guide](docs/migration/motor-core.md).
+
+## Historical upstream notes
+
+
 > **This file is no longer maintained.**
 >
 > Release notes live at

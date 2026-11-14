@@ -1,8 +1,7 @@
 GO ?= go
 
-# Integration tests that need a live MySQL are guarded by testing.Short(),
-# so every target below runs with -short. Nothing is excluded from the race
-# target; anything that has to be would belong in docs/known-issues.md.
+# Shared checks run the full race suite. External integration fixtures are
+# explicitly selected through environment variables documented by their tests.
 
 .PHONY: all build vet test test-race canary-test bench bench-compare soak lint vuln tidy api-snapshot api-check ci
 
@@ -56,7 +55,7 @@ api-check: api-snapshot
 
 ci: check
 
-CHECK_EXTRA := build canary-test api-check language
+CHECK_EXTRA := build canary-test api-check language release-check
 include standard.mk
 
 # Limit compiler parallelism; retain all shared checks and full race tests.
@@ -65,3 +64,8 @@ export GOFLAGS := -mod=readonly -p=2
 .PHONY: language
 language:
 	scripts/check-language.sh $(BASE)
+
+.PHONY: release-check
+release-check:
+	python3 scripts/test_package.py
+	python3 scripts/test_release.py
