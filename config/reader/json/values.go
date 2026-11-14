@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -57,14 +59,82 @@ func (j *jsonValues) Del(path ...string) {
 	j.sj.SetPath(path[:len(path)-1], vals.Interface())
 }
 
-func (j *jsonValues) Set(val interface{}, path ...string) {
-	data, err := json.Marshal(val)
-	if err != nil {
-		return
+func (j *jsonValues) Set(val any, path ...string) error {
+	// Config.Set supplies a normalized tree so no user marshaler runs while its
+	// lock is held. Direct Values users may still supply any JSON-encodable type.
+	owned, ok := cloneJSONValue(val, make(map[jsonVisit]bool))
+	if !ok {
+		data, err := json.Marshal(val)
+		if err != nil {
+			return err
+		}
+		value, err := simple.NewJson(data)
+		if err != nil {
+			return err
+		}
+		owned = value.Interface()
 	}
-	v, err := simple.NewJson(data)
-	if err == nil {
-		j.sj.SetPath(path, v.Interface())
+	j.sj.SetPath(path, owned)
+	return nil
+}
+
+type jsonVisit struct {
+	pointer uintptr
+	kind    reflect.Kind
+	length  int
+}
+
+// Recognize only plain JSON trees. Cyclic or custom input goes through the JSON
+// encoder, which reports invalid values and preserves custom marshaling rules.
+func cloneJSONValue(val any, active map[jsonVisit]bool) (any, bool) {
+	switch value := val.(type) {
+	case nil, bool, string:
+		return value, true
+	case json.Number:
+		_, err := json.Marshal(value)
+		return value, err == nil
+	case float64:
+		return value, !math.IsInf(value, 0) && !math.IsNaN(value)
+	case map[string]any:
+		if value == nil {
+			return nil, true
+		}
+		visit := jsonVisit{pointer: reflect.ValueOf(value).Pointer(), kind: reflect.Map}
+		if active[visit] {
+			return nil, false
+		}
+		active[visit] = true
+		defer delete(active, visit)
+		copy := make(map[string]any, len(value))
+		for key, item := range value {
+			cloned, ok := cloneJSONValue(item, active)
+			if !ok {
+				return nil, false
+			}
+			copy[key] = cloned
+		}
+		return copy, true
+	case []any:
+		if value == nil {
+			return nil, true
+		}
+		visit := jsonVisit{pointer: reflect.ValueOf(value).Pointer(), kind: reflect.Slice, length: len(value)}
+		if active[visit] {
+			return nil, false
+		}
+		active[visit] = true
+		defer delete(active, visit)
+		copy := make([]any, len(value))
+		for i, item := range value {
+			cloned, ok := cloneJSONValue(item, active)
+			if !ok {
+				return nil, false
+			}
+			copy[i] = cloned
+		}
+		return copy, true
+	default:
+		return nil, false
 	}
 }
 

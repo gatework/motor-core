@@ -96,7 +96,9 @@ func TestValuesOwnTheirJSONTree(t *testing.T) {
 	}
 	snapshot := values.Get("nested")
 	input := map[string]string{"name": "next"}
-	values.Set(input, "nested")
+	if err := values.Set(input, "nested"); err != nil {
+		t.Fatal(err)
+	}
 	input["name"] = "changed"
 	if got := values.Get("nested", "name").String(""); got != "next" {
 		t.Fatalf("Set retained caller data: %q", got)
@@ -104,5 +106,22 @@ func TestValuesOwnTheirJSONTree(t *testing.T) {
 	var first map[string]string
 	if err := snapshot.Scan(&first); err != nil || first["name"] != "original" {
 		t.Fatalf("Get did not preserve its snapshot: %v, %v", first, err)
+	}
+}
+
+func TestSetRejectsInvalidJSONValues(t *testing.T) {
+	values, err := newValues(&source.ChangeSet{Data: []byte(`{"value":"original"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cycle := map[string]any{}
+	cycle["self"] = cycle
+	for _, value := range []any{make(chan int), cycle} {
+		if err := values.Set(value, "value"); err == nil {
+			t.Fatal("Set accepted a value without a JSON representation")
+		}
+		if got := values.Get("value").String(""); got != "original" {
+			t.Fatalf("failed Set changed the value to %q", got)
+		}
 	}
 }

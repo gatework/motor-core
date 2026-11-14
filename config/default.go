@@ -2,6 +2,8 @@ package config
 
 import (
 	"bytes"
+	stdjson "encoding/json"
+	"errors"
 	"sync"
 	"time"
 
@@ -252,14 +254,25 @@ func (c *Config) Get(path ...string) reader.Value {
 	return newValue()
 }
 
-func (c *Config) Set(val interface{}, path ...string) {
+// Set encodes caller values before taking the configuration lock. A failed
+// conversion leaves the current snapshot unchanged.
+func (c *Config) Set(val any, path ...string) error {
+	data, err := stdjson.Marshal(val)
+	if err != nil {
+		return err
+	}
+	var normalized any
+	decoder := stdjson.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(&normalized); err != nil {
+		return err
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-
-	if c.vals != nil {
-		c.vals.Set(val, path...)
+	if c.vals == nil {
+		return errors.New("config: values are not initialized")
 	}
-
+	return c.vals.Set(normalized, path...)
 }
 
 func (c *Config) Del(path ...string) {

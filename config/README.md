@@ -22,3 +22,15 @@ func TestApp(t *testing.T)  {
 	fmt.Println(c.Map())
 }
 ```
+
+## Updating values
+
+`Config.Set(value, path...)` and `reader.Values.Set(value, path...)` return an
+error when a value cannot be represented as JSON. A failed update leaves the
+previous value intact. Handle this error instead of assuming every arbitrary
+Go value is a valid configuration value.
+
+The manager serializes caller values before acquiring its configuration mutex.
+Custom JSON marshalers may read the same manager without re-entering its lock.
+The stored tree is owned by the manager; maps, slices, and large JSON numbers
+are copied without losing precision.

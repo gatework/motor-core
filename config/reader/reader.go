@@ -18,7 +18,7 @@ type Reader interface {
 type Values interface {
 	Bytes() []byte
 	Get(path ...string) Value
-	Set(val interface{}, path ...string)
+	Set(val any, path ...string) error
 	Del(path ...string)
 	Map() map[string]interface{}
 	Scan(v interface{}) error
