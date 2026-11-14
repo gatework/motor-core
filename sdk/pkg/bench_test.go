@@ -24,18 +24,12 @@ func benchContext(withHeader bool) *gin.Context {
 	return c
 }
 
-// BenchmarkRequestIDNew is a request that arrived without a
-// correlation id: a UUID is minted and written to the response header.
-//
-// One context serves every iteration because the lookup reads the *request*
-// header while the write goes to the *response* header, so the miss repeats
-// and every iteration mints a fresh id.
+// BenchmarkRequestIDNew measures a request with no cached correlation ID.
 func BenchmarkRequestIDNew(b *testing.B) {
 	c := benchContext(false)
-
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
+		c.Keys = nil
 		_ = RequestID(c)
 	}
 }

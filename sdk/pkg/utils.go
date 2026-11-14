@@ -57,14 +57,23 @@ func HasError(err error, msg string, code ...int) {
 	}
 }
 
-// RequestID 生成msgID
+const requestIDKey = "motor.request-id"
+
+// RequestID returns one correlation ID for the request and echoes it in the
+// response. Call it before starting concurrent work on copied Gin contexts.
 func RequestID(c *gin.Context) string {
-	requestId := c.GetHeader(TrafficKey)
-	if requestId == "" {
-		requestId = uuid.New().String()
-		c.Header(TrafficKey, requestId)
+	if value, ok := c.Get(requestIDKey); ok {
+		if id, ok := value.(string); ok && id != "" {
+			return id
+		}
 	}
-	return requestId
+	id := c.GetHeader(TrafficKey)
+	if id == "" {
+		id = uuid.New().String()
+	}
+	c.Header(TrafficKey, id)
+	c.Set(requestIDKey, id)
+	return id
 }
 
 // errDBNotInContext is built once rather than per call. Handlers call GetORM
