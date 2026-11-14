@@ -116,13 +116,15 @@ type Queue struct {
 	handlers map[string]storage.Handler
 	// groups caches topics known to have a consumer group in Redis, whether it
 	// was created here or by another instance.
-	groups      map[string]struct{}
-	closed      bool
-	pending     map[string]struct{}
-	operations  sync.WaitGroup
-	runDone     chan struct{}
-	done        chan struct{}
-	shutdownErr error
+	groups map[string]struct{}
+	// reclaimCursor is owned by the retry loop, whose topic set is frozen.
+	reclaimCursor map[string]string
+	closed        bool
+	pending       map[string]struct{}
+	operations    sync.WaitGroup
+	runDone       chan struct{}
+	done          chan struct{}
+	shutdownErr   error
 
 	// started is guarded by mu because marking the queue started and freezing
 	// its topic set have to be one step.
@@ -155,16 +157,17 @@ func OpenQueue(ctx context.Context, clientOpts *goredis.Options, opts QueueOptio
 func newQueue(client goredis.UniversalClient, owned bool, opts QueueOptions) *Queue {
 	stopCtx, stopCancel := context.WithCancel(context.Background())
 	return &Queue{
-		client:     client,
-		owned:      owned,
-		opts:       opts.withDefaults(),
-		handlers:   make(map[string]storage.Handler),
-		groups:     make(map[string]struct{}),
-		pending:    make(map[string]struct{}),
-		runDone:    make(chan struct{}),
-		done:       make(chan struct{}),
-		stopCtx:    stopCtx,
-		stopCancel: stopCancel,
+		client:        client,
+		owned:         owned,
+		opts:          opts.withDefaults(),
+		handlers:      make(map[string]storage.Handler),
+		groups:        make(map[string]struct{}),
+		reclaimCursor: make(map[string]string),
+		pending:       make(map[string]struct{}),
+		runDone:       make(chan struct{}),
+		done:          make(chan struct{}),
+		stopCtx:       stopCtx,
+		stopCancel:    stopCancel,
 	}
 }
 
@@ -468,18 +471,29 @@ func (q *Queue) reclaimLoop(ctx context.Context, topics []string) {
 
 func (q *Queue) reclaim(ctx context.Context, topic string) {
 	stream := q.stream(topic)
+	start := q.reclaimCursor[topic]
+	if start == "" {
+		start = "-"
+	}
 
 	pending, err := q.client.XPendingExt(ctx, &goredis.XPendingExtArgs{
 		Stream: stream,
 		Group:  q.opts.Group,
 		Idle:   q.opts.ClaimMinIdle,
-		Start:  "-",
+		Start:  start,
 		End:    "+",
 		Count:  q.opts.Batch,
 	}).Result()
 	if err != nil {
-		// Transient; the next sweep tries again.
+		// Transient; the next sweep tries again from the same cursor.
 		return
+	}
+	// Exhausted deliveries stay visible in Redis, so advance past them as well.
+	// A short page ends this pass; the next sweep starts at the oldest entry.
+	if int64(len(pending)) == q.opts.Batch {
+		q.reclaimCursor[topic] = "(" + pending[len(pending)-1].ID
+	} else {
+		delete(q.reclaimCursor, topic)
 	}
 
 	ids := make([]string, 0, len(pending))
