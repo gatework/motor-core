@@ -33,7 +33,7 @@ func (c *Config) LoadFile(path string) error
 func (c *Config) Map() map[string]interface{}
 func (c *Config) Options() Options
 func (c *Config) Scan(v interface{}) error
-func (c *Config) Set(val interface{}, path ...string)
+func (c *Config) Set(val any, path ...string) error
 func (c *Config) String() string
 func (c *Config) Sync() error
 func (c *Config) Watch(path ...string) (Watcher, error)
@@ -122,7 +122,7 @@ type Value interface {
 type Values interface {
 	Bytes() []byte
 	Get(path ...string) Value
-	Set(val interface{}, path ...string)
+	Set(val any, path ...string) error
 	Del(path ...string)
 	Map() map[string]interface{}
 	Scan(v interface{}) error
@@ -824,13 +824,12 @@ type API struct {
 	DB      *gorm.DB
 	Cache   storage.Cache
 func New(c *gin.Context, deps Dependencies) (*API, error)
-func (e *API) Bind(d any, bindings ...binding.Binding) error
+func (e *API) Bind(d any) error
 func (e *API) Custom(data gin.H)
 func (e *API) Error(code int, err error, msg string)
 func (e *API) OK(data any, msg string)
 func (e *API) PageOK(result any, count int, pageIndex int, pageSize int, msg string)
 func (e *API) Service() service.Service
-func (e API) Translate(form, to any)
 type Dependencies struct {
 	DB     *gorm.DB
 	Logger logger.Logger
@@ -1022,7 +1021,7 @@ type Control interface {
 	Generate() Control
 	Bind(ctx *gin.Context) error
 	GenerateM() (models.ActiveRecord, error)
-	GetId() interface{}
+	GetID() interface{}
 type Field struct {
 	Config        Config      `json:"__config__"`
 	Slot          Slot        `json:"__slot__"`
@@ -1044,30 +1043,30 @@ type Field struct {
 	Multiple      bool        `json:"multiple,omitempty"`
 	Filterable    bool        `json:"filterable,omitempty"`
 type GeneralDelDto struct {
-	Id  int   `uri:"id" json:"id" validate:"required"`
-	Ids []int `json:"ids"`
-func (g GeneralDelDto) GetIds() []int
+	ID  int   `uri:"id" json:"id" validate:"required"`
+	IDs []int `json:"ids"`
+func (g GeneralDelDto) GetIDs() []int
 type GeneralGetDto struct {
-	Id int `uri:"id" json:"id" validate:"required"`
+	ID int `uri:"id" json:"id" validate:"required"`
 type Index interface {
 	Generate() Index
 	Bind(ctx *gin.Context) error
 	GetPageIndex() int
 	GetPageSize() int
 	GetNeedSearch() interface{}
-type ObjectById struct {
-	Id  int   `uri:"id"`
-	Ids []int `json:"ids"`
-func (s *ObjectById) Bind(ctx *gin.Context) error
-func (s *ObjectById) GetId() interface{}
+type ObjectByID struct {
+	ID  int   `uri:"id"`
+	IDs []int `json:"ids"`
+func (s *ObjectByID) Bind(ctx *gin.Context) error
+func (s *ObjectByID) GetID() any
 type ObjectDeleteReq struct {
-	Ids []int `json:"ids"`
+	IDs []int `json:"ids"`
 func (s *ObjectDeleteReq) Bind(ctx *gin.Context) error
-func (s *ObjectDeleteReq) GetId() interface{}
+func (s *ObjectDeleteReq) GetID() any
 type ObjectGetReq struct {
-	Id int `uri:"id"`
+	ID int `uri:"id"`
 func (s *ObjectGetReq) Bind(ctx *gin.Context) error
-func (s *ObjectGetReq) GetId() interface{}
+func (s *ObjectGetReq) GetID() any
 type Option struct {
 	Label string `json:"label"`
 	Value string `json:"value"`
@@ -1114,7 +1113,7 @@ type ActiveRecord interface {
 	SetCreateBy(createBy int)
 	SetUpdateBy(updateBy int)
 	Generate() ActiveRecord
-	GetId() interface{}
+	GetID() interface{}
 type BaseUser struct {
 	Username     string `json:"username" gorm:"type:varchar(100);comment:username"`
 	Salt         string `json:"-" gorm:"type:varchar(255);comment:salt;<-"`
@@ -1134,7 +1133,7 @@ type Migration struct {
 	AppCode string `gorm:"type:varchar(64);not null;default:'';index:idx_sys_migration_app_code;comment:AppCode"`
 func (Migration) TableName() string
 type Model struct {
-	Id int `json:"id" gorm:"primaryKey;autoIncrement;comment:primary key"`
+	ID int `json:"id" gorm:"primaryKey;autoIncrement;comment:primary key"`
 type ModelTime struct {
 	CreatedAt time.Time `json:"createdAt" gorm:"comment:creation time"`
 	UpdatedAt time.Time `json:"updatedAt" gorm:"comment:last updated time"`
@@ -1196,7 +1195,6 @@ func CompareHashAndPassword(e string, p string) (bool, error)
 func Cyan(msg string) string
 func FileCreate(content bytes.Buffer, name string) error
 func FileMonitoringById(ctx context.Context, filePth string, id string, group string, hookfn func(context.Context, string, string, []byte))
-func GenerateMsgIDFromContext(c *gin.Context) string
 func GenerateRandomKey16() string
 func GenerateRandomKey20() string
 func GenerateRandomKey6() string
@@ -1219,12 +1217,12 @@ func PathCreate(dir string) error
 func PathExist(addr string) bool
 func Post(url string, data interface{}, contentType string) ([]byte, error)
 func Red(msg string) string
+func RequestID(c *gin.Context) string
 func Round(f float64, n int) float64
 func SetColor(msg string, conf, bg, text int) string
 func SetPassword(password string, salt string) (verify string, err error)
 func StringToInt(e string) (int, error)
 func StructToJsonStr(e interface{}) (string, error)
-func Translate(form, to interface{})
 func UIntToString(e uint) string
 func White(msg string) string
 func Yellow(msg string) string
@@ -1298,7 +1296,7 @@ var (
 	ErrNoClient   = errors.New("ws: client not found")
 	ErrSlowClient = errors.New("ws: client send queue full")
 type Manager struct {
-func New() *Manager
+func New(opts ...Option) (*Manager, error)
 func (m *Manager) Connect(ctx context.Context, id, group string, conn *websocket.Conn) error
 func (m *Manager) Disconnect(ctx context.Context, id, group string) error
 func (m *Manager) DisconnectHandler(c *gin.Context)
@@ -1309,6 +1307,9 @@ func (m *Manager) Send(ctx context.Context, id, group string, payload []byte) er
 func (m *Manager) SendAll(ctx context.Context, payload []byte) error
 func (m *Manager) SendGroup(ctx context.Context, group string, payload []byte) error
 func (m *Manager) Shutdown(ctx context.Context) error
+type Option func(*options) error
+func WithMaxMessageBytes(limit int64) Option
+func WithWriteTimeout(timeout time.Duration) Option
 
 ## github.com/gatework/motor-core/sdk/runtime
 const (
@@ -1406,20 +1407,22 @@ func (s *Server) Add(name string, r Runnable) error
 func (s *Server) Run(ctx context.Context) error
 
 ## github.com/gatework/motor-core/server/listener
-type Option func(*options)
-func WithAddr(s string) Option
-func WithCert(s string) Option
+type Option func(*options) error
+func WithAddr(addr string) Option
+func WithCert(path string) Option
 func WithEndHook(f func()) Option
 func WithHandler(handler http.Handler) Option
-func WithKey(s string) Option
+func WithIdleTimeout(timeout time.Duration) Option
+func WithKey(path string) Option
+func WithReadHeaderTimeout(timeout time.Duration) Option
 func WithStartedHook(f func()) Option
 type Server struct {
-func New(name string, opts ...Option) *Server
-func NewHealthz(opts ...Option) *Server
-func NewMetrics(opts ...Option) *Server
-func NewReadyz(opts ...Option) *Server
-func (e *Server) Options(opts ...Option)
-func (e *Server) Run(ctx context.Context) error
+func New(name string, opts ...Option) (*Server, error)
+func NewHealthz(opts ...Option) (*Server, error)
+func NewMetrics(opts ...Option) (*Server, error)
+func NewReadyz(opts ...Option) (*Server, error)
+func (e *Server) Options(opts ...Option) error
+func (e *Server) Run(ctx context.Context) (runErr error)
 func (e *Server) Shutdown(ctx context.Context) error
 func (e *Server) String() string
 
@@ -1547,7 +1550,7 @@ const (
 func New(config logger.Config) logger.Interface
 
 ## github.com/gatework/motor-core/tools/language
-func ParseAcceptLanguage(languages string, supportedLanguages []string) []string
+func ParseAcceptLanguage(header string, supportedLanguages []string) []string
 
 ## github.com/gatework/motor-core/tools/poster
 func GetImage(src string) (m image.Image, err error)
