@@ -3,6 +3,7 @@ package ws
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -44,9 +45,12 @@ func dialedConnection(t *testing.T) (*websocket.Conn, <-chan []byte) {
 	return conn, received
 }
 
-func runningManager(t *testing.T) *Manager {
+func runningManager(t *testing.T, opts ...Option) *Manager {
 	t.Helper()
-	m := New()
+	m, err := New(opts...)
+	if err != nil {
+		t.Fatal(err)
+	}
 	go func() { _ = m.Run(t.Context()) }()
 	deadline := time.After(time.Second)
 	for {
@@ -129,4 +133,103 @@ func TestRegistrationAndBroadcastHaveOneQueueOwner(t *testing.T) {
 	if err := m.Shutdown(t.Context()); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestNetworkOptionsRejectInvalidBudgets(t *testing.T) {
+	for name, option := range map[string]Option{
+		"negative message limit": WithMaxMessageBytes(-1),
+		"negative write timeout": WithWriteTimeout(-time.Second),
+		"nil option":             nil,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := New(option); err == nil {
+				t.Fatal("invalid option accepted")
+			}
+		})
+	}
+	m, err := New(WithMaxMessageBytes(0), WithWriteTimeout(0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.opts.maxMessageBytes != 1<<20 || m.opts.writeTimeout != 10*time.Second {
+		t.Fatalf("unexpected defaults: %+v", m.opts)
+	}
+}
+
+func managedPeer(t *testing.T, m *Manager) *websocket.Conn {
+	t.Helper()
+	accepted := make(chan *websocket.Conn, 1)
+	upgrader := websocket.Upgrader{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err == nil {
+			accepted <- conn
+		}
+	}))
+	t.Cleanup(srv.Close)
+	dialer := websocket.Dialer{NetDialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+		var d net.Dialer
+		conn, err := d.DialContext(ctx, network, address)
+		if err != nil {
+			return nil, err
+		}
+		if tcp, ok := conn.(*net.TCPConn); ok {
+			if err := tcp.SetReadBuffer(1024); err != nil {
+				_ = conn.Close()
+				return nil, err
+			}
+		}
+		return conn, nil
+	}}
+	peer, _, err := dialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = peer.Close() })
+	conn := <-accepted
+	if err := m.Connect(t.Context(), "peer", "group", conn); err != nil {
+		_ = conn.Close()
+		t.Fatal(err)
+	}
+	return peer
+}
+
+func waitForDisconnect(t *testing.T, m *Manager) {
+	t.Helper()
+	deadline := time.NewTimer(2 * time.Second)
+	defer deadline.Stop()
+	tick := time.NewTicker(time.Millisecond)
+	defer tick.Stop()
+	for m.Info()["clientLen"] != 0 {
+		select {
+		case <-deadline.C:
+			t.Fatal("connection worker did not release its client")
+		case <-tick.C:
+		}
+	}
+}
+
+func TestIncomingMessageLimitDisconnectsPeer(t *testing.T) {
+	m := runningManager(t, WithMaxMessageBytes(16))
+	peer := managedPeer(t, m)
+	if err := peer.WriteMessage(websocket.TextMessage, []byte(strings.Repeat("x", 17))); err != nil {
+		t.Fatal(err)
+	}
+	if err := peer.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := peer.ReadMessage(); !websocket.IsCloseError(err, websocket.CloseMessageTooBig) {
+		t.Fatalf("oversized message close = %v", err)
+	}
+	waitForDisconnect(t, m)
+}
+
+func TestWriteBudgetDisconnectsStalledPeer(t *testing.T) {
+	m := runningManager(t, WithWriteTimeout(20*time.Millisecond))
+	_ = managedPeer(t, m)
+	payload := []byte(`"` + strings.Repeat("x", 4<<20) + `"`)
+	if err := m.Send(t.Context(), "peer", "group", payload); err != nil {
+		t.Fatal(err)
+	}
+	waitForDisconnect(t, m)
 }

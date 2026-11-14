@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -57,11 +58,28 @@ type Manager struct {
 	stop, done          chan struct{}
 	stats               atomic.Pointer[counts]
 	workers             sync.WaitGroup
+	opts                options
 }
 
-func New() *Manager { m := &Manager{}; m.init(); return m }
+// New constructs a manager with bounded incoming messages and network writes.
+func New(opts ...Option) (*Manager, error) {
+	m := &Manager{opts: defaultOptions()}
+	for _, option := range opts {
+		if option == nil {
+			return nil, errors.New("ws: option is required")
+		}
+		if err := option(&m.opts); err != nil {
+			return nil, err
+		}
+	}
+	m.init()
+	return m, nil
+}
 func (m *Manager) init() {
 	m.once.Do(func() {
+		if m.opts.maxMessageBytes == 0 {
+			m.opts = defaultOptions()
+		}
 		m.commands = make(chan command, 128)
 		m.stop = make(chan struct{})
 		m.done = make(chan struct{})
@@ -146,6 +164,7 @@ func (m *Manager) Run(ctx context.Context) error {
 					groups[c.group] = make(map[string]*client)
 				}
 				groups[c.group][c.id] = c
+				c.conn.SetReadLimit(m.opts.maxMessageBytes)
 				m.workers.Add(2)
 				go func() { defer m.workers.Done(); m.read(ctx, c) }()
 				go func() { defer m.workers.Done(); m.write(ctx, c) }()
@@ -248,6 +267,9 @@ func (m *Manager) write(ctx context.Context, c *client) {
 			return
 		case data, ok := <-c.outgoing:
 			if !ok {
+				return
+			}
+			if err := c.conn.SetWriteDeadline(time.Now().Add(m.opts.writeTimeout)); err != nil {
 				return
 			}
 			if err := c.conn.WriteMessage(websocket.TextMessage, data); err != nil {

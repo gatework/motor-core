@@ -41,68 +41,63 @@ func (r *serverRun) stopAccepting() {
 	})
 }
 
-// New 实例化
-func New(name string, opts ...Option) *Server {
-	s := &Server{
-		name: name,
-		opts: setDefaultOption(),
+// New constructs a listener with bounded headers and idle keep-alive waits.
+func New(name string, opts ...Option) (*Server, error) {
+	if name == "" {
+		return nil, errors.New("listener: name is required")
 	}
-	s.Options(opts...)
-	return s
+	s := &Server{name: name, opts: setDefaultOption()}
+	if err := s.Options(opts...); err != nil {
+		return nil, err
+	}
+	return s, nil
 }
 
-// NewMetrics 新建默认监控服务
-func NewMetrics(opts ...Option) *Server {
-	s := &Server{
-		name: "metrics",
-		opts: setDefaultOption(),
-	}
-	s.opts.addr = ":3000"
+// NewMetrics constructs a metrics listener on port 3000 unless overridden.
+func NewMetrics(opts ...Option) (*Server, error) {
 	h := http.NewServeMux()
 	h.Handle("/metrics", promhttp.Handler())
-	s.opts.handler = h
-	s.Options(opts...)
-	return s
+	defaults := []Option{WithAddr(":3000"), WithHandler(h)}
+	return New("metrics", append(defaults, opts...)...)
 }
 
-// NewHealthz 默认健康检查服务
-func NewHealthz(opts ...Option) *Server {
-	s := &Server{
-		name: "healthz",
-		opts: setDefaultOption(),
-	}
-	s.opts.addr = ":4000"
+// NewHealthz constructs a health listener on port 4000 unless overridden.
+func NewHealthz(opts ...Option) (*Server, error) {
+	return newProbe("healthz", ":4000", "/healthz", opts)
+}
+
+// NewReadyz constructs a readiness listener on port 2000 unless overridden.
+func NewReadyz(opts ...Option) (*Server, error) {
+	return newProbe("readyz", ":2000", "/readyz", opts)
+}
+
+func newProbe(name, addr, path string, opts []Option) (*Server, error) {
 	h := http.NewServeMux()
-	h.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+	h.HandleFunc(path, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	s.opts.handler = h
-	s.Options(opts...)
-	return s
+	defaults := []Option{WithAddr(addr), WithHandler(h)}
+	return New(name, append(defaults, opts...)...)
 }
 
-func NewReadyz(opts ...Option) *Server {
-	s := &Server{
-		name: "readyz",
-		opts: setDefaultOption(),
-	}
-	s.opts.addr = ":2000"
-	h := http.NewServeMux()
-	h.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
-	s.opts.handler = h
-	s.Options(opts...)
-	return s
-}
-
-// Options 设置参数
-func (e *Server) Options(opts ...Option) {
+// Options validates settings for the next Run. Invalid changes are not applied.
+func (e *Server) Options(opts ...Option) error {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
-	for _, o := range opts {
-		o(&e.opts)
+	next := e.opts
+	for _, option := range opts {
+		if option == nil {
+			return errors.New("listener: option is required")
+		}
+		if err := option(&next); err != nil {
+			return err
+		}
 	}
+	if (next.certFile == "") != (next.keyFile == "") {
+		return errors.New("listener: certificate and key must be supplied together")
+	}
+	e.opts = next
+	return nil
 }
 
 func (e *Server) String() string {
@@ -152,7 +147,12 @@ func (e *Server) Run(ctx context.Context) (runErr error) {
 		}
 	}
 	defer l.Close()
-	srv := &http.Server{Handler: opts.handler, BaseContext: func(net.Listener) context.Context { return ctx }}
+	srv := &http.Server{
+		Handler:           opts.handler,
+		BaseContext:       func(net.Listener) context.Context { return ctx },
+		ReadHeaderTimeout: opts.readHeaderTimeout,
+		IdleTimeout:       opts.idleTimeout,
+	}
 	if tlsConfig != nil {
 		l = tls.NewListener(l, tlsConfig)
 	}
