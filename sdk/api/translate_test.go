@@ -32,7 +32,7 @@ func bindWith(t *testing.T, header string) error {
 	c.Request = req
 
 	e := &API{Context: c}
-	return e.Bind(&payload{}, binding.JSON)
+	return e.Bind(&payload{})
 }
 
 // The two halves of this — reading the header and building the translator —

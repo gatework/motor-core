@@ -2,7 +2,6 @@ package api
 
 import (
 	"errors"
-	"io"
 
 	vd "github.com/bytedance/go-tagexpr/v2/validator"
 	"github.com/gatework/motor-core/logger"
@@ -63,43 +62,25 @@ func validate(obj any) error {
 	return binding.Validator.ValidateStruct(obj)
 }
 
-// Bind decodes and validates a DTO without retaining errors on the handler.
-func (e *API) Bind(d any, bindings ...binding.Binding) error {
-	if e.Context == nil || e.Context.Request == nil {
+// Bind decodes query parameters, one content-type-selected body, and URI
+// parameters in that order, then validates the completed DTO once. Form tags
+// bind query and URL-encoded values. URI values take precedence over the body.
+func (e *API) Bind(d any) error {
+	if e == nil || e.Context == nil || e.Context.Request == nil {
 		return errors.New("api: request context is required")
 	}
-	if err := e.Context.Request.Context().Err(); err != nil {
+	ctx := e.Context.Request.Context()
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if d == nil {
-		return errors.New("api: binding target is required")
+	if err := decodeRequest(e.Context, d); err != nil {
+		return err
 	}
-	var err error
-	if len(bindings) == 0 {
-		bindings, err = constructor.bindingsFor(d)
-		if err != nil {
-			return err
-		}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
-	validated := false
-	for _, b := range bindings {
-		if b == nil {
-			err = e.Context.ShouldBindUri(d)
-		} else {
-			err = e.Context.ShouldBindWith(d, b)
-		}
-		if errors.Is(err, io.EOF) {
-			continue
-		}
-		if err != nil {
-			return TranslateValidationErrors(err, e.getAcceptLanguage())
-		}
-		validated = true
-	}
-	if !validated {
-		if err := validate(d); err != nil {
-			return TranslateValidationErrors(err, e.getAcceptLanguage())
-		}
+	if err := validate(d); err != nil {
+		return TranslateValidationErrors(err, e.getAcceptLanguage())
 	}
 	return vd.Validate(d)
 }
