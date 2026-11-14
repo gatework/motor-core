@@ -1,0 +1,378 @@
+package redis_test
+
+import (
+	"context"
+	"errors"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	goredis "github.com/redis/go-redis/v9"
+
+	"github.com/gatework/motor-core/storage"
+	"github.com/gatework/motor-core/storage/cachetest"
+	redisstore "github.com/gatework/motor-core/storage/redis"
+)
+
+// The same suite that validates the in-memory implementation. One admin client
+// serves every case, rather than a dial per case.
+func TestRedisQueueConformance(t *testing.T) {
+	url := redisURL(t)
+	admin := adminClient(t, url)
+
+	cachetest.RunQueue(t, func(t *testing.T) storage.Queue {
+		flush(t, admin)
+
+		q, err := redisstore.OpenQueue(context.Background(), redisOptions(t, url), redisstore.QueueOptions{
+			// Short enough that a case which cancels within a few seconds does
+			// not spend most of that time inside one blocking read.
+			Block: 100 * time.Millisecond,
+		})
+		if err != nil {
+			t.Fatalf("connect to Redis: %v", err)
+		}
+		return q
+	})
+}
+
+// failing records every delivery and always reports an error, which is what
+// keeps the entry pending and therefore eligible for a retry.
+type failing struct {
+	mu       sync.Mutex
+	attempts []int
+}
+
+func (f *failing) handle(_ context.Context, m storage.Message) error {
+	f.mu.Lock()
+	f.attempts = append(f.attempts, m.Attempts)
+	f.mu.Unlock()
+	return errors.New("handler failed on purpose")
+}
+
+func (f *failing) seen() []int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]int, len(f.attempts))
+	copy(out, f.attempts)
+	return out
+}
+
+// A message whose handler keeps failing must be retried up to MaxAttempts and
+// then left pending, so that it is still visible instead of silently gone.
+func TestRetriesUntilMaxAttemptsThenLeavesPending(t *testing.T) {
+	url := redisURL(t)
+	admin := adminClient(t, url)
+	flush(t, admin)
+
+	const group = "retry-test"
+	q, err := redisstore.OpenQueue(context.Background(), redisOptions(t, url), redisstore.QueueOptions{
+		Group:        group,
+		MaxAttempts:  3,
+		Block:        50 * time.Millisecond,
+		ClaimMinIdle: 200 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("connect to Redis: %v", err)
+	}
+	defer q.Shutdown(context.Background())
+
+	f := &failing{}
+	if err := q.Subscribe(context.Background(), "orders", f.handle); err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if err := q.Run(ctx); err != nil {
+			t.Errorf("Start: %v", err)
+		}
+	}()
+
+	if err := q.Publish(context.Background(), storage.Message{Topic: "orders"}); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+
+	deadline := time.After(10 * time.Second)
+	for len(f.seen()) < 3 {
+		select {
+		case <-deadline:
+			t.Fatalf("expected 3 attempts, saw %v", f.seen())
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+
+	// Long enough for several more sweeps, none of which may redeliver.
+	time.Sleep(time.Second)
+
+	if got := f.seen(); len(got) != 3 {
+		t.Errorf("delivery must stop at MaxAttempts, saw attempts %v", got)
+	} else {
+		for i, n := range got {
+			if n != i+1 {
+				t.Errorf("attempt %d reported Attempts = %d, want %d", i, n, i+1)
+			}
+		}
+	}
+
+	cancel()
+	<-done
+
+	pending, err := admin.XPending(context.Background(), "orders", group).Result()
+	if err != nil {
+		t.Fatalf("XPENDING: %v", err)
+	}
+	if pending.Count != 1 {
+		t.Errorf("a message that was given up on must stay pending, XPENDING reports %d", pending.Count)
+	}
+}
+
+// roundTrip publishes one message and returns it as the handler saw it.
+func roundTrip(t *testing.T, url string, values map[string]interface{}) storage.Message {
+	t.Helper()
+
+	q, err := redisstore.OpenQueue(context.Background(), redisOptions(t, url), redisstore.QueueOptions{
+		Block: 100 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("connect to Redis: %v", err)
+	}
+	t.Cleanup(func() { _ = q.Shutdown(context.Background()) })
+
+	got := make(chan storage.Message, 1)
+	if err := q.Subscribe(context.Background(), "orders", func(_ context.Context, m storage.Message) error {
+		got <- m
+		return nil
+	}); err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	go func() { _ = q.Run(ctx) }()
+
+	if err := q.Publish(context.Background(), storage.Message{Topic: "orders", Values: values}); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+
+	select {
+	case m := <-got:
+		return m
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for the message")
+		return storage.Message{}
+	}
+}
+
+// Values travel as JSON, so a consumer sees the types JSON can express rather
+// than the ones the publisher put in. The contract only promises strings; this
+// records what actually happens to the rest.
+func TestValuesTravelAsJSON(t *testing.T) {
+	url := redisURL(t)
+	flush(t, adminClient(t, url))
+
+	m := roundTrip(t, url, map[string]interface{}{
+		"id":    "42",
+		"count": 7,
+		"retry": true,
+	})
+
+	if m.Values["id"] != "42" {
+		t.Errorf("a string must survive unchanged, got %#v", m.Values["id"])
+	}
+	if m.Values["count"] != float64(7) {
+		t.Errorf("a number arrives as float64, got %#v", m.Values["count"])
+	}
+	if m.Values["retry"] != true {
+		t.Errorf("a bool must survive unchanged, got %#v", m.Values["retry"])
+	}
+}
+
+// An empty payload is carried by a reserved marker field, which must not eat a
+// caller's field that happens to share its name.
+func TestReservedFieldNameIsNotSwallowed(t *testing.T) {
+	url := redisURL(t)
+	flush(t, adminClient(t, url))
+
+	m := roundTrip(t, url, map[string]interface{}{"go-admin:empty": "mine"})
+
+	if m.Values["go-admin:empty"] != "mine" {
+		t.Errorf("the caller's field was lost, got %#v", m.Values)
+	}
+}
+
+// A caller-supplied client is shared, so Close must not shut it down.
+func TestCloseLeavesBorrowedClientUsable(t *testing.T) {
+	url := redisURL(t)
+
+	cases := []struct {
+		name  string
+		close func(*goredis.Client) error
+	}{
+		{"cache", func(c *goredis.Client) error {
+			return redisstore.NewCache(c).Close()
+		}},
+		{"queue", func(c *goredis.Client) error {
+			return redisstore.NewQueue(c, redisstore.QueueOptions{}).Shutdown(t.Context())
+		}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			client := adminClient(t, url)
+
+			if err := tc.close(client); err != nil {
+				t.Fatalf("Close: %v", err)
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := client.Ping(ctx).Err(); err != nil {
+				t.Errorf("a borrowed client must stay usable after Close: %v", err)
+			}
+		})
+	}
+}
+
+// An operator deleting the stream, or any other way the consumer group can go
+// missing, used to end the read loop for good: NOGROUP is an ordinary error, so
+// Start returned it and nothing was ever consumed again. It has to recover.
+func TestRecoversFromADeletedStream(t *testing.T) {
+	url := redisURL(t)
+	admin := adminClient(t, url)
+	flush(t, admin)
+
+	q, err := redisstore.OpenQueue(context.Background(), redisOptions(t, url), redisstore.QueueOptions{
+		Block: 50 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("connect to Redis: %v", err)
+	}
+	defer q.Shutdown(context.Background())
+
+	got := make(chan storage.Message, 8)
+	if err := q.Subscribe(context.Background(), "orders", func(_ context.Context, m storage.Message) error {
+		got <- m
+		return nil
+	}); err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	started := make(chan error, 1)
+	go func() { started <- q.Run(ctx) }()
+
+	if err := q.Publish(context.Background(), storage.Message{Topic: "orders"}); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	select {
+	case <-got:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the first message was never delivered")
+	}
+
+	// Take the stream away underneath the running loop.
+	if err := admin.Del(context.Background(), "orders").Err(); err != nil {
+		t.Fatalf("DEL: %v", err)
+	}
+
+	// The loop has to notice, put the group back and carry on. Publish recreates
+	// the stream through XADD; without recovery Start would already have exited.
+	deadline := time.After(10 * time.Second)
+	for {
+		if err := q.Publish(context.Background(), storage.Message{Topic: "orders"}); err != nil {
+			t.Fatalf("Publish after the stream was deleted: %v", err)
+		}
+		select {
+		case <-got:
+			select {
+			case err := <-started:
+				t.Fatalf("Start returned instead of recovering: %v", err)
+			default:
+			}
+			return
+		case err := <-started:
+			t.Fatalf("Start returned instead of recovering: %v", err)
+		case <-time.After(250 * time.Millisecond):
+		}
+		select {
+		case <-deadline:
+			t.Fatal("the queue never resumed consuming after the stream was deleted")
+		default:
+		}
+	}
+}
+
+// spinClient reports a missing group on every read, and lets the group be
+// created exactly once so that Subscribe succeeds and the recovery inside the
+// read loop does not. A real Redis reaches this state through a failover to a
+// read-only replica or an ACL that allows XREADGROUP but not XGROUP.
+type spinClient struct {
+	// Embedded rather than implemented: the read loop touches two commands and
+	// nothing else, and a nil call panicking says so loudly.
+	goredis.UniversalClient
+
+	reads  atomic.Int64
+	groups atomic.Int64
+}
+
+func (c *spinClient) XReadGroup(ctx context.Context, _ *goredis.XReadGroupArgs) *goredis.XStreamSliceCmd {
+	c.reads.Add(1)
+	cmd := goredis.NewXStreamSliceCmd(ctx)
+	cmd.SetErr(errors.New("NOGROUP No such key 'orders' or consumer group 'g'"))
+	return cmd
+}
+
+func (c *spinClient) XGroupCreateMkStream(ctx context.Context, _, _, _ string) *goredis.StatusCmd {
+	cmd := goredis.NewStatusCmd(ctx)
+	if c.groups.Add(1) > 1 {
+		cmd.SetErr(errors.New("NOPERM this user has no permissions to run the 'xgroup|create' command"))
+	}
+	return cmd
+}
+
+// A group that cannot be recreated used to cost a full core: XREADGROUP answers
+// NOGROUP without waiting out Block, so the recovery path had no pacing of its
+// own. Needs no Redis.
+func TestReadLoopPacesItselfWhenTheGroupCannotBeRecreated(t *testing.T) {
+	const block = 50 * time.Millisecond
+
+	client := &spinClient{}
+	q := redisstore.NewQueue(client, redisstore.QueueOptions{
+		Group: "g",
+		Block: block,
+		// Long enough that the reclaim sweep never runs and never reaches a
+		// command this client does not implement.
+		ClaimMinIdle: time.Minute,
+	})
+	if err := q.Subscribe(context.Background(), "orders", func(context.Context, storage.Message) error { return nil }); err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+
+	window := 20 * block
+	ctx, cancel := context.WithTimeout(context.Background(), window)
+	defer cancel()
+
+	// Start runs on its own so that a loop which ignores the deadline fails the
+	// test rather than hanging the package until the go test timeout.
+	done := make(chan error, 1)
+	go func() { done <- q.Run(ctx) }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Start: %v", err)
+		}
+	case <-time.After(4 * window):
+		t.Fatalf("Start did not return %v after the context expired", 3*window)
+	}
+
+	// One read per backoff is the shape being pinned; the allowance is for a
+	// loaded machine, not for a loop that never waits.
+	if reads, limit := client.reads.Load(), int64(window/block)*3; reads > limit {
+		t.Errorf("%d reads in %v, expected at most %d: the loop is not backing off", reads, window, limit)
+	}
+}

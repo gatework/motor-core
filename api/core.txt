@@ -1,0 +1,1620 @@
+# Exported API of github.com/gatework/motor-core
+# Regenerate with: make api-snapshot
+
+## github.com/gatework/motor-core/captcha
+func DriverDigitFunc() (id, b64s, answer string, err error)
+func DriverStringFunc() (id, b64s, answer string, err error)
+func NewCacheStore(ctx context.Context, cache storage.Cache, expiration time.Duration) base64Captcha.Store
+func SetStore(s base64Captcha.Store)
+func Verify(id, code string, clear bool) bool
+
+## github.com/gatework/motor-core/casbin
+var ReloadInterval = time.Minute
+func KeyMatch2(path, pattern string) (bool, error)
+func Setup(db *gorm.DB, key string) *casbin.SyncedEnforcer
+func UpdateCallback(msg string)
+type Logger struct {
+func (l *Logger) EnableLog(enable bool)
+func (l *Logger) IsEnabled() bool
+func (l *Logger) LogEnforce(matcher string, request []any, result bool, explains [][]string)
+func (l *Logger) LogModel(model [][]string)
+func (l *Logger) LogPolicy(policy map[string][][]string)
+func (l *Logger) LogRole(roles []string)
+
+## github.com/gatework/motor-core/config
+type Config struct {
+func New(opts ...Option) (*Config, error)
+func (c *Config) Bytes() []byte
+func (c *Config) Close() error
+func (c *Config) Del(path ...string)
+func (c *Config) Get(path ...string) reader.Value
+func (c *Config) Load(sources ...source.Source) error
+func (c *Config) LoadFile(path string) error
+func (c *Config) Map() map[string]interface{}
+func (c *Config) Options() Options
+func (c *Config) Scan(v interface{}) error
+func (c *Config) Set(val interface{}, path ...string)
+func (c *Config) String() string
+func (c *Config) Sync() error
+func (c *Config) Watch(path ...string) (Watcher, error)
+type Entity interface {
+	OnChange()
+type Option func(o *Options)
+func WithEntity(e Entity) Option
+func WithLoader(l loader.Loader) Option
+func WithReader(r reader.Reader) Option
+func WithSource(s source.Source) Option
+type Options struct {
+	Loader loader.Loader
+	Reader reader.Reader
+	Source []source.Source
+	Context context.Context
+	Entity Entity
+type Watcher interface {
+	Next() (reader.Value, error)
+	Stop() error
+
+## github.com/gatework/motor-core/config/encoder
+type Encoder interface {
+	Encode(interface{}) ([]byte, error)
+	Decode([]byte, interface{}) error
+	String() string
+
+## github.com/gatework/motor-core/config/encoder/json
+func NewEncoder() encoder.Encoder
+
+## github.com/gatework/motor-core/config/encoder/toml
+func NewEncoder() encoder.Encoder
+
+## github.com/gatework/motor-core/config/encoder/xml
+func NewEncoder() encoder.Encoder
+
+## github.com/gatework/motor-core/config/encoder/yaml
+func NewEncoder() encoder.Encoder
+
+## github.com/gatework/motor-core/config/loader
+type Loader interface {
+	Close() error
+	Load(...source.Source) error
+	Snapshot() (*Snapshot, error)
+	Sync() error
+	Watch(...string) (Watcher, error)
+	String() string
+type Option func(o *Options)
+type Options struct {
+	Reader reader.Reader
+	Source []source.Source
+	Context context.Context
+type Snapshot struct {
+	ChangeSet *source.ChangeSet
+	Version string
+func Copy(s *Snapshot) *Snapshot
+type Watcher interface {
+	Next() (*Snapshot, error)
+	Stop() error
+
+## github.com/gatework/motor-core/config/loader/memory
+func NewLoader(opts ...loader.Option) loader.Loader
+func WithReader(r reader.Reader) loader.Option
+func WithSource(s source.Source) loader.Option
+
+## github.com/gatework/motor-core/config/reader
+func ReplaceEnvVars(raw []byte) ([]byte, error)
+type Option func(o *Options)
+func WithEncoder(e encoder.Encoder) Option
+type Options struct {
+	Encoding map[string]encoder.Encoder
+func NewOptions(opts ...Option) Options
+type Reader interface {
+	Merge(...*source.ChangeSet) (*source.ChangeSet, error)
+	Values(*source.ChangeSet) (Values, error)
+	String() string
+type Value interface {
+	Bool(def bool) bool
+	Int(def int) int
+	String(def string) string
+	Float64(def float64) float64
+	Duration(def time.Duration) time.Duration
+	StringSlice(def []string) []string
+	StringMap(def map[string]string) map[string]string
+	Scan(val interface{}) error
+	Bytes() []byte
+type Values interface {
+	Bytes() []byte
+	Get(path ...string) Value
+	Set(val interface{}, path ...string)
+	Del(path ...string)
+	Map() map[string]interface{}
+	Scan(v interface{}) error
+
+## github.com/gatework/motor-core/config/reader/json
+func NewReader(opts ...reader.Option) reader.Reader
+
+## github.com/gatework/motor-core/config/source
+var (
+	ErrWatcherStopped = errors.New("watcher stopped")
+type ChangeSet struct {
+	Data      []byte
+	Checksum  string
+	Format    string
+	Source    string
+	Timestamp time.Time
+func (c *ChangeSet) Sum() string
+type Option func(o *Options)
+func WithEncoder(e encoder.Encoder) Option
+type Options struct {
+	Encoder encoder.Encoder
+	Context context.Context
+func NewOptions(opts ...Option) Options
+type Source interface {
+	Read() (*ChangeSet, error)
+	Write(*ChangeSet) error
+	Watch() (Watcher, error)
+	String() string
+type Watcher interface {
+	Next() (*ChangeSet, error)
+	Stop() error
+func NewNoopWatcher() (Watcher, error)
+
+## github.com/gatework/motor-core/config/source/env
+var (
+	DefaultPrefixes = []string{}
+func NewSource(opts ...source.Option) source.Source
+func WithPrefix(p ...string) source.Option
+func WithStrippedPrefix(p ...string) source.Option
+
+## github.com/gatework/motor-core/config/source/file
+var (
+	DefaultPath = "config.json"
+func NewSource(opts ...source.Option) source.Source
+func WithPath(filePath string) source.Option
+
+## github.com/gatework/motor-core/config/source/flag
+func IncludeUnset(b bool) source.Option
+func NewSource(opts ...source.Option) source.Source
+
+## github.com/gatework/motor-core/config/source/memory
+func NewSource(opts ...source.Option) source.Source
+func WithChangeSet(cs *source.ChangeSet) source.Option
+func WithJSON(d []byte) source.Option
+func WithYAML(d []byte) source.Option
+
+## github.com/gatework/motor-core/errors
+const (
+	Silent       = "0"
+	MessageWarn  = "1"
+	MessageError = "2"
+	Notification = "4"
+	Page         = "9"
+var File_errors_proto protoreflect.FileDescriptor
+func Equal(err1 error, err2 error) bool
+func New(id, domain string, code ErrorCoder) error
+type Error struct {
+	Success bool `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	ErrorCode string `protobuf:"bytes,2,opt,name=errorCode,proto3" json:"errorCode,omitempty"`
+	ErrorMessage string `protobuf:"bytes,3,opt,name=errorMessage,proto3" json:"errorMessage,omitempty"`
+	ShowType string `protobuf:"bytes,4,opt,name=showType,proto3" json:"showType,omitempty"`
+	TraceId string `protobuf:"bytes,5,opt,name=traceId,proto3" json:"traceId,omitempty"`
+	Domain string `protobuf:"bytes,6,opt,name=domain,proto3" json:"domain,omitempty"`
+func FromError(err error) *Error
+func Parse(errStr string) *Error
+func (*Error) Descriptor() ([]byte, []int)
+func (e *Error) Error() string
+func (x *Error) GetDomain() string
+func (x *Error) GetErrorCode() string
+func (x *Error) GetErrorMessage() string
+func (x *Error) GetShowType() string
+func (x *Error) GetSuccess() bool
+func (x *Error) GetTraceId() string
+func (*Error) ProtoMessage()
+func (x *Error) ProtoReflect() protoreflect.Message
+func (x *Error) Reset()
+func (x *Error) String() string
+type ErrorCode int32
+const (
+	OK                  ErrorCode = http.StatusOK
+	BadRequest          ErrorCode = http.StatusBadRequest
+	Unauthorized        ErrorCode = http.StatusUnauthorized
+	Forbidden           ErrorCode = http.StatusForbidden
+	NotFound            ErrorCode = http.StatusNotFound
+	MethodNotAllowed    ErrorCode = http.StatusMethodNotAllowed
+	Timeout             ErrorCode = http.StatusRequestTimeout
+	Conflict            ErrorCode = http.StatusConflict
+	InternalServerError ErrorCode = http.StatusInternalServerError
+func (e ErrorCode) Code() int32
+func (i ErrorCode) String() string
+type ErrorCoder interface {
+	String() string
+	Code() int32
+
+## github.com/gatework/motor-core/jwtauth
+const JwtPayloadKey = "JWT_PAYLOAD"
+var (
+	ErrMissingSecretKey = errors.New("secret key is required")
+	ErrForbidden = errors.New("you don't have permission to access this resource")
+	ErrMissingAuthenticatorFunc = errors.New("ginJWTMiddleware.Authenticator func is undefined")
+	ErrMissingLoginValues = errors.New("missing Username or Password or Code")
+	ErrFailedAuthentication = errors.New("incorrect Username or Password")
+	ErrFailedTokenCreation = errors.New("failed to create JWT Token")
+	ErrExpiredToken = errors.New("token is expired")
+	ErrEmptyAuthHeader = errors.New("auth header is empty")
+	ErrMissingExpField = errors.New("missing exp field")
+	ErrWrongFormatOfExp = errors.New("exp is not a number")
+	ErrInvalidClaims = errors.New("invalid token claims")
+	ErrMissingOrigIatField = errors.New("missing orig_iat field")
+	ErrInvalidAuthHeader = errors.New("auth header is invalid")
+	ErrEmptyQueryToken = errors.New("query token is empty")
+	ErrEmptyCookieToken = errors.New("cookie token is empty")
+	ErrEmptyParamToken = errors.New("parameter token is empty")
+	ErrInvalidSigningAlgorithm = errors.New("invalid signing algorithm")
+	ErrInvalidVerificationode = errors.New("验证码错误")
+	ErrNoPrivKeyFile = errors.New("private key file unreadable")
+	ErrNoPubKeyFile = errors.New("public key file unreadable")
+	ErrInvalidPrivKey = errors.New("private key invalid")
+	ErrInvalidPubKey = errors.New("public key invalid")
+	IdentityKey = "identity"
+	NiceKey      = "nice"
+	DataScopeKey = "datascope"
+	RKey = "r"
+	RoleIdKey = "roleid"
+	RoleKey = "rolekey"
+	RoleNameKey = "rolename"
+	DeptId = "deptId"
+	DeptName = "deptName"
+func GetToken(c *gin.Context) string
+type GinJWTMiddleware struct {
+	Realm string
+	SigningAlgorithm string
+	Key []byte
+	Timeout time.Duration
+	MaxRefresh time.Duration
+	Authenticator func(c *gin.Context) (interface{}, error)
+	Authorizator func(data interface{}, c *gin.Context) bool
+	PayloadFunc func(data interface{}) MapClaims
+	Unauthorized func(*gin.Context, int, string)
+	LoginResponse func(*gin.Context, int, string, time.Time)
+	AntdLoginResponse func(*gin.Context, int, string, time.Time)
+	RefreshResponse func(*gin.Context, int, string, time.Time)
+	IdentityHandler func(*gin.Context) interface{}
+	IdentityKey string
+	NiceKey string
+	DataScopeKey string
+	RKey string
+	RoleIdKey string
+	RoleKey string
+	RoleNameKey string
+	TokenLookup string
+	TokenHeadName string
+	TimeFunc func() time.Time
+	HTTPStatusMessageFunc func(e error, c *gin.Context) string
+	PrivKeyFile string
+	PubKeyFile string
+	SendCookie bool
+	SecureCookie bool
+	CookieHTTPOnly bool
+	CookieDomain string
+	SendAuthorization bool
+	DisabledAbort bool
+	CookieName string
+func New(m *GinJWTMiddleware) (*GinJWTMiddleware, error)
+func (mw *GinJWTMiddleware) CheckIfTokenExpire(c *gin.Context) (jwt.MapClaims, error)
+func (mw *GinJWTMiddleware) GetClaimsFromJWT(c *gin.Context) (MapClaims, error)
+func (mw *GinJWTMiddleware) LoginHandler(c *gin.Context)
+func (mw *GinJWTMiddleware) MiddlewareFunc() gin.HandlerFunc
+func (mw *GinJWTMiddleware) MiddlewareInit() error
+func (mw *GinJWTMiddleware) ParseToken(c *gin.Context) (*jwt.Token, error)
+func (mw *GinJWTMiddleware) ParseTokenString(token string) (*jwt.Token, error)
+func (mw *GinJWTMiddleware) RefreshHandler(c *gin.Context)
+func (mw *GinJWTMiddleware) RefreshToken(c *gin.Context) (string, time.Time, error)
+func (mw *GinJWTMiddleware) TokenGenerator(data interface{}) (string, time.Time, error)
+type MapClaims map[string]interface{}
+func ExtractClaims(c *gin.Context) MapClaims
+func ExtractClaimsFromToken(token *jwt.Token) MapClaims
+func (m MapClaims) Int64(key string) (int64, bool)
+
+## github.com/gatework/motor-core/jwtauth/user
+func DepartmentID(c *gin.Context) int
+func DepartmentName(c *gin.Context) string
+func ExtractClaims(c *gin.Context) jwt.MapClaims
+func Get(c *gin.Context, key string) any
+func RoleID(c *gin.Context) int
+func RoleName(c *gin.Context) string
+func UserID(c *gin.Context) int
+func UserIDString(c *gin.Context) string
+func UserName(c *gin.Context) string
+
+## github.com/gatework/motor-core/logger
+const (
+	Reset = "\033[0m"
+	Red         = "\033[31m"
+	Green       = "\033[32m"
+	Yellow      = "\033[33m"
+	Blue        = "\033[34m" // Caller 路径、GORM 路径
+	Magenta     = "\033[35m"
+	Cyan        = "\033[36m"
+	White       = "\033[37m"
+	Gray        = "\033[90m" // 次要信息
+	BrightWhite = "\033[97m" // DEBUG 级别
+	BlueBold    = "\033[34;1m" // GORM rows 计数
+	MagentaBold = "\033[35;1m"
+	RedBold     = "\033[31;1m" // FATAL/PANIC
+	YellowBold  = "\033[33;1m"
+	GreenBold   = "\033[32;1m"
+	CyanBold    = "\033[36;1m"
+var DefaultAsyncConfig = AsyncConfig{
+	BufferSize:    10000,
+	FlushInterval: 100 * time.Millisecond,
+	DropPolicy:    "drop",
+	OnDropped:     nil,
+var DefaultSamplingConfig = SamplingConfig{
+	Initial:    10,
+	Thereafter: 100,
+	Tick:       time.Second,
+var DefaultSanitizerConfig = SanitizerConfig{
+	Enabled: true,
+	Rules:   DefaultSanitizerRules,
+var DefaultSanitizerRules = []SanitizerRule{
+	{
+		FieldPattern: "phone",
+		Strategy:     "mask",
+		MaskChar:     "*",
+		KeepPrefix:   3,
+		KeepSuffix:   4,
+	},
+	{
+		FieldPattern: "idcard",
+		Strategy:     "mask",
+		MaskChar:     "*",
+		KeepPrefix:   3,
+		KeepSuffix:   4,
+	},
+	{
+		FieldPattern: "id_card",
+		Strategy:     "mask",
+		MaskChar:     "*",
+		KeepPrefix:   3,
+		KeepSuffix:   4,
+	},
+	{
+		FieldPattern: "password",
+		Strategy:     "remove",
+	},
+	{
+		FieldPattern: "passwd",
+		Strategy:     "remove",
+	},
+	{
+		FieldPattern: "token",
+		Strategy:     "hash",
+	},
+	{
+		FieldPattern: "*_token",
+		Strategy:     "hash",
+	},
+	{
+		FieldPattern: "api_key",
+		Strategy:     "hash",
+	},
+	{
+		FieldPattern: "apikey",
+		Strategy:     "hash",
+	},
+	{
+		FieldPattern: "email",
+		Strategy:     "mask",
+		MaskChar:     "*",
+		KeepPrefix:   4,
+		KeepSuffix:   12,
+	},
+func Debug(args ...any)
+func Debugf(format string, args ...any)
+func Error(args ...any)
+func Errorf(format string, args ...any)
+func Fatal(args ...any)
+func Fatalf(format string, args ...any)
+func Info(args ...any)
+func Infof(format string, args ...any)
+func ListAdapters() []string
+func Log(ctx context.Context, level Level, message string, fields ...Field)
+func Logf(level Level, format string, args ...any)
+func NewContext(ctx context.Context, log *Helper) context.Context
+func RegisterAdapter(name string, factory AdapterFactory)
+func SetDefault(log Logger)
+func SetMasker(fn Masker)
+func Trace(args ...any)
+func Tracef(format string, args ...any)
+func V(level Level, log Logger) bool
+func Warn(args ...any)
+func Warnf(format string, args ...any)
+type AdapterConfig struct {
+	Type string `json:"type" yaml:"type"`
+	Zap *ZapConfig `json:"zap,omitempty" yaml:"zap,omitempty"`
+	Zerolog *ZerologConfig `json:"zerolog,omitempty" yaml:"zerolog,omitempty"`
+	Logrus *LogrusConfig `json:"logrus,omitempty" yaml:"logrus,omitempty"`
+type AdapterFactory func(opts ...Option) (Logger, error)
+func GetAdapter(name string) (AdapterFactory, error)
+type Async struct {
+func NewAsyncLogger(log Logger, config AsyncConfig) *Async
+func (a *Async) Close() error
+func (a *Async) Enabled(level Level) bool
+func (a *Async) GetStats() (queueLength int64, droppedCount uint64)
+func (a *Async) Log(ctx context.Context, level Level, message string, fields ...Field)
+func (a *Async) Sync() error
+func (a *Async) With(fields ...Field) Logger
+type AsyncConfig struct {
+	BufferSize int
+	FlushInterval time.Duration
+	OnDropped func(level Level, msg string)
+	DropPolicy string
+type AsyncPluginConfig struct {
+	Enabled bool `json:"enabled" yaml:"enabled"`
+	BufferSize int `json:"bufferSize" yaml:"bufferSize"`
+	FlushInterval time.Duration `json:"flushInterval" yaml:"flushInterval"`
+	DropOnFull bool `json:"dropOnFull" yaml:"dropOnFull"`
+type CallerHook struct {
+func NewCallerHook(skip int) *CallerHook
+func (h *CallerHook) Fire(entry *logrus.Entry) error
+func (h *CallerHook) Levels() []logrus.Level
+type Config struct {
+	Core CoreConfig `json:"core" yaml:"core"`
+	Adapter AdapterConfig `json:"adapter" yaml:"adapter"`
+	Output OutputConfig `json:"output" yaml:"output"`
+	Plugins PluginsConfig `json:"plugins" yaml:"plugins"`
+func DefaultConfig() *Config
+func (c *Config) Validate() error
+type ConsoleConfig struct {
+	Enabled bool `json:"enabled" yaml:"enabled"`
+	Color bool `json:"color" yaml:"color"`
+	Level string `json:"level" yaml:"level"`
+type ConsoleFormatter struct {
+	TimestampFormat string
+	ForceColors     bool
+func (f *ConsoleFormatter) Format(entry *logrus.Entry) ([]byte, error)
+type CoreConfig struct {
+	Level string `json:"level" yaml:"level"`
+	EnableCaller bool `json:"enableCaller" yaml:"enableCaller"`
+	CallerSkip int `json:"callerSkip" yaml:"callerSkip"`
+	EnableStacktrace bool `json:"enableStacktrace" yaml:"enableStacktrace"`
+	Name string `json:"name" yaml:"name"`
+	Fields map[string]interface{} `json:"fields" yaml:"fields"`
+type ElasticsearchHook struct {
+func NewElasticsearchHook(client interface{}, index string) *ElasticsearchHook
+func (h *ElasticsearchHook) Fire(entry *logrus.Entry) error
+func (h *ElasticsearchHook) Levels() []logrus.Level
+type Field struct {
+	Key    string
+	Type   FieldType
+	Int64  int64  // 存储 int、bool、duration、time
+	String string // 存储 string
+	Any    any    // 存储 error、复杂类型
+func Any(key string, val any) Field
+func Bool(key string, val bool) Field
+func ClientIP(val string) Field
+func Duration(key string, val time.Duration) Field
+func FieldError(err error) Field
+func FieldString(key string, val string) Field
+func FieldsFromMap(values map[string]any) []Field
+func Int(key string, val int) Field
+func Int64(key string, val int64) Field
+func Latency(val time.Duration) Field
+func Method(val string) Field
+func RequestID(val string) Field
+func StatusCode(val int) Field
+func Time(key string, val time.Time) Field
+func TraceID(val string) Field
+func URI(val string) Field
+func UserID(val int64) Field
+type FieldType uint8
+const (
+	FieldTypeAny FieldType = iota
+	FieldTypeString
+	FieldTypeInt
+	FieldTypeBool
+	FieldTypeDuration
+	FieldTypeTime
+	FieldTypeError
+type FileConfig struct {
+	Enabled bool `json:"enabled" yaml:"enabled"`
+	Path string `json:"path" yaml:"path"`
+	Level string `json:"level" yaml:"level"`
+	MaxSize int `json:"maxSize" yaml:"maxSize"`
+	MaxAge int `json:"maxAge" yaml:"maxAge"`
+	MaxBackups int `json:"maxBackups" yaml:"maxBackups"`
+	Compress bool `json:"compress" yaml:"compress"`
+	LocalTime bool `json:"localTime" yaml:"localTime"`
+type Helper struct{ Logger }
+func FromContext(ctx context.Context) *Helper
+func NewHelper(log Logger) *Helper
+func (h *Helper) Debug(args ...any)
+func (h *Helper) Debugf(format string, args ...any)
+func (h *Helper) Debugw(message string, args ...any)
+func (h *Helper) Error(args ...any)
+func (h *Helper) Errorf(format string, args ...any)
+func (h *Helper) Errorw(message string, args ...any)
+func (h *Helper) Fatal(args ...any)
+func (h *Helper) Fatalf(format string, args ...any)
+func (h *Helper) Info(args ...any)
+func (h *Helper) Infof(format string, args ...any)
+func (h *Helper) Infow(message string, args ...any)
+func (h *Helper) Trace(args ...any)
+func (h *Helper) Tracef(format string, args ...any)
+func (h *Helper) Warn(args ...any)
+func (h *Helper) Warnf(format string, args ...any)
+func (h *Helper) Warnw(message string, args ...any)
+func (h *Helper) WithError(err error) *Helper
+func (h *Helper) WithFields(fields map[string]any) *Helper
+type Level int8
+const (
+	TraceLevel Level = iota - 2
+	DebugLevel
+	InfoLevel
+	WarnLevel
+	ErrorLevel
+	FatalLevel
+func GetLevel(levelStr string) (Level, error)
+func (l Level) Enabled(lvl Level) bool
+func (l Level) LevelForGorm() int
+func (l Level) String() string
+type Logger interface {
+	Log(ctx context.Context, level Level, message string, fields ...Field)
+	With(fields ...Field) Logger
+	Enabled(level Level) bool
+func Default() Logger
+func NewFromConfig(cfg *Config) (Logger, error)
+func SetupLogger(cfg *Config) (Logger, error)
+func With(fields ...Field) Logger
+type Logrus struct {
+func NewDevelopmentLogger() (*Logrus, error)
+func NewLogrusLogger(opts ...Option) (*Logrus, error)
+func NewProductionLogger(path string) (*Logrus, error)
+func (l *Logrus) AddHook(hook logrus.Hook)
+func (r Logrus) Close() error
+func (l *Logrus) GetLogrusLogger() *logrus.Logger
+func (l *Logrus) SetFormatter(formatter logrus.Formatter)
+func (r Logrus) Sync() error
+type LogrusConfig struct {
+	Formatter string `json:"formatter" yaml:"formatter"`
+type Masker func(string) string
+func GetMasker() Masker
+type MetricsHook struct {
+func NewMetricsHook() *MetricsHook
+func (h *MetricsHook) Fire(entry *logrus.Entry) error
+func (h *MetricsHook) Levels() []logrus.Level
+type MetricsPluginConfig struct {
+	Enabled bool `json:"enabled" yaml:"enabled"`
+	Namespace string `json:"namespace" yaml:"namespace"`
+	Subsystem string `json:"subsystem" yaml:"subsystem"`
+type NetworkConfig struct {
+	Type string `json:"type" yaml:"type"`
+	Endpoints []string `json:"endpoints" yaml:"endpoints"`
+	Topic string `json:"topic" yaml:"topic"`
+	Index string `json:"index" yaml:"index"`
+	BufferSize int `json:"bufferSize" yaml:"bufferSize"`
+	FlushInterval time.Duration `json:"flushInterval" yaml:"flushInterval"`
+type Option func(*Options)
+func WithAsync(config AsyncConfig) Option
+func WithCallerSkipCount(c int) Option
+func WithEnableCaller(enabled bool) Option
+func WithEnableStacktrace(enabled bool) Option
+func WithEncoder(encoder string) Option
+func WithFields(fields map[string]interface{}) Option
+func WithLevel(level Level) Option
+func WithName(name string) Option
+func WithOutput(out io.Writer) Option
+func WithPath(path string) Option
+func WithRotation(maxSize, maxAge, maxBackups int, compress bool) Option
+func WithSampling(config SamplingConfig) Option
+func WithSanitizer(config SanitizerConfig) Option
+func WithStdout(enabled bool) Option
+type Options struct {
+	Level Level
+	Fields map[string]interface{}
+	Out io.Writer
+	CallerSkipCount int
+	Async     *AsyncConfig
+	Sampling  *SamplingConfig
+	Sanitizer *SanitizerConfig
+	Name string
+	Path string
+	Stdout bool
+	Encoder string
+	EnableCaller     bool
+	EnableStacktrace bool
+	MaxSize int
+	MaxAge int
+	MaxBackups int
+	Compress bool
+	LocalTime bool
+func DefaultOptions() Options
+type OutputConfig struct {
+	Console *ConsoleConfig `json:"console,omitempty" yaml:"console,omitempty"`
+	File *FileConfig `json:"file,omitempty" yaml:"file,omitempty"`
+	Network *NetworkConfig `json:"network,omitempty" yaml:"network,omitempty"`
+	Format string `json:"format" yaml:"format"`
+	Encoding string `json:"encoding" yaml:"encoding"`
+type PluginsConfig struct {
+	Sampling *SamplingPluginConfig `json:"sampling,omitempty" yaml:"sampling,omitempty"`
+	Metrics *MetricsPluginConfig `json:"metrics,omitempty" yaml:"metrics,omitempty"`
+	Tracing *TracingPluginConfig `json:"tracing,omitempty" yaml:"tracing,omitempty"`
+	Sanitize *SanitizePluginConfig `json:"sanitize,omitempty" yaml:"sanitize,omitempty"`
+	Async *AsyncPluginConfig `json:"async,omitempty" yaml:"async,omitempty"`
+type Sampling struct {
+func NewSamplingLogger(log Logger, config SamplingConfig) *Sampling
+func (s *Sampling) Close() error
+func (s *Sampling) Enabled(level Level) bool
+func (s *Sampling) Log(ctx context.Context, level Level, message string, fields ...Field)
+func (s *Sampling) Sync() error
+func (s *Sampling) With(fields ...Field) Logger
+type SamplingConfig struct {
+	ExcludeLevels []Level
+	Initial int
+	Thereafter int
+	Tick time.Duration
+type SamplingPluginConfig struct {
+	Enabled bool `json:"enabled" yaml:"enabled"`
+	Initial int `json:"initial" yaml:"initial"`
+	Thereafter int `json:"thereafter" yaml:"thereafter"`
+	Tick time.Duration `json:"tick" yaml:"tick"`
+	ExcludeLevels []string `json:"excludeLevels" yaml:"excludeLevels"`
+type SanitizePluginConfig struct {
+	Enabled bool `json:"enabled" yaml:"enabled"`
+	Rules []SanitizeRule `json:"rules" yaml:"rules"`
+type SanitizeRule struct {
+	FieldPattern string `json:"fieldPattern" yaml:"fieldPattern"`
+	Strategy string `json:"strategy" yaml:"strategy"`
+	MaskChar string `json:"maskChar" yaml:"maskChar"`
+type Sanitizer struct {
+func NewSanitizerLogger(log Logger, config SanitizerConfig) *Sanitizer
+func (s *Sanitizer) Close() error
+func (s *Sanitizer) Enabled(level Level) bool
+func (s *Sanitizer) Log(ctx context.Context, level Level, message string, fields ...Field)
+func (s *Sanitizer) Sync() error
+func (s *Sanitizer) With(fields ...Field) Logger
+type SanitizerConfig struct {
+	Enabled bool
+	Rules []SanitizerRule
+	CustomMatcher func(fieldName string) *SanitizerRule
+type SanitizerRule struct {
+	FieldPattern string
+	Strategy string
+	MaskChar string
+	KeepPrefix int
+	KeepSuffix int
+type SentryHook struct {
+func NewSentryHook() *SentryHook
+func (h *SentryHook) Fire(entry *logrus.Entry) error
+func (h *SentryHook) Levels() []logrus.Level
+type Text struct {
+func NewLogger(opts ...Option) *Text
+func NewTestLogger() *Text
+func (r Text) Close() error
+func (r Text) Sync() error
+type TracingPluginConfig struct {
+	Enabled bool `json:"enabled" yaml:"enabled"`
+	Provider string `json:"provider" yaml:"provider"`
+	AutoExtract bool `json:"autoExtract" yaml:"autoExtract"`
+type Zap struct {
+func NewZapLogger(opts ...Option) (*Zap, error)
+func (r Zap) Close() error
+func (r Zap) Sync() error
+type ZapConfig struct {
+	Development bool `json:"development" yaml:"development"`
+	DisableCaller bool `json:"disableCaller" yaml:"disableCaller"`
+	DisableStacktrace bool `json:"disableStacktrace" yaml:"disableStacktrace"`
+	Sampling *ZapSamplingConfig `json:"sampling,omitempty" yaml:"sampling,omitempty"`
+type ZapSamplingConfig struct {
+	Initial    int `json:"initial" yaml:"initial"`
+	Thereafter int `json:"thereafter" yaml:"thereafter"`
+type ZerologConfig struct {
+	TimeFormat string `json:"timeFormat" yaml:"timeFormat"`
+
+## github.com/gatework/motor-core/logger/writer
+type File struct {
+	FilenameFunc func(*File) string
+func New(opts ...Option) (*File, error)
+func (w *File) Close() error
+func (w *File) Write(data []byte) (int, error)
+type Option func(*Options)
+func WithCap(n uint) Option
+func WithPath(s string) Option
+func WithSuffix(s string) Option
+type Options struct {
+
+## github.com/gatework/motor-core/observe/audit
+var (
+	DefaultSize = 256
+	DefaultFormat = TextFormat
+func JSONFormat(r Record) string
+func TextFormat(r Record) string
+type FormatFunc func(Record) string
+type Log interface {
+	Read(...ReadOption) ([]Record, error)
+	Write(Record) error
+	Stream() (Stream, error)
+type Option func(*Options)
+func Format(f FormatFunc) Option
+func Name(n string) Option
+func Size(s int) Option
+type Options struct {
+	Name string
+	Size int
+	Format FormatFunc
+type ReadOption func(*ReadOptions)
+func Count(c int) ReadOption
+func Since(s time.Time) ReadOption
+type ReadOptions struct {
+	Since time.Time
+	Count int
+	Stream bool
+type Record struct {
+	Timestamp time.Time `json:"timestamp"`
+	Metadata map[string]string `json:"metadata"`
+	Message interface{} `json:"message"`
+type Stream interface {
+	Chan() <-chan Record
+	Stop() error
+
+## github.com/gatework/motor-core/response
+var Default = &response{}
+func Custom(c *gin.Context, data gin.H)
+func Error(c *gin.Context, code int, err error, msg string)
+func OK(c *gin.Context, data interface{}, msg string)
+func PageOK(c *gin.Context, result interface{}, count int, pageIndex int, pageSize int, msg string)
+type Page struct {
+	Count     int `json:"count"`
+	PageIndex int `json:"pageIndex"`
+	PageSize  int `json:"pageSize"`
+type Response struct {
+	RequestId string `protobuf:"bytes,1,opt,name=requestId,proto3" json:"requestId,omitempty"`
+	Code      int32  `protobuf:"varint,2,opt,name=code,proto3" json:"code,omitempty"`
+	Msg       string `protobuf:"bytes,3,opt,name=msg,proto3" json:"msg,omitempty"`
+	Status    string `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
+type Responses interface {
+	SetCode(int32)
+	SetTraceID(string)
+	SetMsg(string)
+	SetData(interface{})
+	SetSuccess(bool)
+	Clone() Responses
+
+## github.com/gatework/motor-core/response/antd
+const (
+	Silent       = "0"
+	MessageWarn  = "1"
+	MessageError = "2"
+	Notification = "4"
+	Page         = "9"
+func Custum(c *gin.Context, data gin.H)
+func Error(c *gin.Context, errCode string, errMsg string, showType string)
+func ListOK(c *gin.Context, result interface{}, total int, current int, pageSize int)
+func OK(c *gin.Context, data interface{})
+func PageOK(c *gin.Context, result interface{}, total int, current int, pageSize int)
+func UpFileOK(c *gin.Context, data interface{})
+type ListData struct {
+	List     interface{} `json:"list,omitempty"` // response data
+	Total    int         `json:"total,omitempty"`
+	Current  int         `json:"current,omitempty"`
+	PageSize int         `json:"pageSize,omitempty"`
+type Pages struct {
+	Response
+	Data     interface{} `json:"data,omitempty"` // response data
+	Total    int         `json:"total,omitempty"`
+	Current  int         `json:"current,omitempty"`
+	PageSize int         `json:"pageSize,omitempty"`
+type Response struct {
+	Success      bool   `json:"success,omitempty"`      // if request is success
+	ErrorCode    string `json:"errorCode,omitempty"`    // code for errorType
+	ErrorMessage string `json:"errorMessage,omitempty"` // message display to user
+	ShowType     string `json:"showType,omitempty"`     // error display type： 0 silent; 1 message.warn; 2 message.error; 4 notification; 9 page
+	TraceId      string `json:"traceId,omitempty"`      // Convenient for back-end Troubleshooting: unique request ID
+	Host         string `json:"host,omitempty"`         // onvenient for backend Troubleshooting: host of current access server
+	Status       string `json:"status,omitempty"`
+
+## github.com/gatework/motor-core/sdk
+var Runtime = runtime.New()
+
+## github.com/gatework/motor-core/sdk/api
+var DefaultLanguage = "zh-CN"
+func GetRequestLogger(c *gin.Context) *logger.Helper
+func SetRequestLogger(c *gin.Context)
+func TranslateValidationErrors(err error, locale string) error
+type API struct {
+	Context *gin.Context
+	Logger  *logger.Helper
+	DB      *gorm.DB
+	Cache   storage.Cache
+func New(c *gin.Context, deps Dependencies) (*API, error)
+func (e *API) Bind(d any, bindings ...binding.Binding) error
+func (e *API) Custom(data gin.H)
+func (e *API) Error(code int, err error, msg string)
+func (e *API) OK(data any, msg string)
+func (e *API) PageOK(result any, count int, pageIndex int, pageSize int, msg string)
+func (e *API) Service() service.Service
+func (e API) Translate(form, to any)
+type Dependencies struct {
+	DB     *gorm.DB
+	Logger logger.Logger
+	Cache  storage.Cache
+
+## github.com/gatework/motor-core/sdk/bootstrap
+func SetupConfig(
+	ctx context.Context,
+	app *runtime.Application,
+	s source.Source,
+	callbacks ...func(*config.Settings) error,
+
+## github.com/gatework/motor-core/sdk/config
+func RegisterExtend[T any](key string) func() *T
+type Application struct {
+	ReadTimeout   int
+	WriterTimeout int
+	Host          string
+	Port          int64
+	Name          string
+	Mode          string
+	DemoMsg       string
+	EnableDP      bool
+	TenantMode int `yaml:"tenantMode"`
+type Cache struct {
+	Redis  *RedisOptions `yaml:"redis" json:"redis"`
+	Memory *CacheMemory  `yaml:"memory" json:"memory"`
+func (c Cache) Open(ctx context.Context) (storage.Cache, error)
+type CacheMemory struct{}
+type Config struct {
+	Application Application                `yaml:"application" json:"application"`
+	SSL         SSL                        `yaml:"ssl" json:"ssl"`
+	Logger      Logger                     `yaml:"logger" json:"logger"`
+	JWT         JWT                        `yaml:"jwt" json:"jwt"`
+	Database    Database                   `yaml:"database" json:"database"`
+	Databases   map[string]Database        `yaml:"databases" json:"databases"`
+	Gen         Gen                        `yaml:"gen" json:"gen"`
+	Cache       Cache                      `yaml:"cache" json:"cache"`
+	Queue       Queue                      `yaml:"queue" json:"queue"`
+	Extend      map[string]json.RawMessage `yaml:"extend" json:"extend"`
+type DBResolverConfig struct {
+	Sources  []string
+	Replicas []string
+	Policy   string
+	Tables   []string
+type Database struct {
+	Driver          string
+	Source          string
+	ConnMaxIdleTime int
+	ConnMaxLifeTime int
+	MaxIdleConns    int
+	MaxOpenConns    int
+	Registers       []DBResolverConfig
+type Gen struct {
+	DBName    string
+	FrontPath string
+type JWT struct {
+	Secret string
+	Timeout int64
+	MaxRefresh int64
+type Logger struct {
+	Type         string          `yaml:"type" json:"type"`
+	Adapter      string          `yaml:"adapter" json:"adapter"`
+	Path         string          `yaml:"path" json:"path"`
+	Level        string          `yaml:"level" json:"level"`
+	Stdout       string          `yaml:"stdout" json:"stdout"`
+	Encoder      string          `yaml:"encoder" json:"encoder"`
+	EnableCaller bool            `yaml:"enableCaller" json:"enableCaller"`
+	EnabledDB    bool            `yaml:"enableddb" json:"enableddb"`
+	Cap          uint            `yaml:"cap" json:"cap"`
+	Rotation     *RotationConfig `yaml:"rotation" json:"rotation"`
+func (l Logger) Open() (logger.Logger, error)
+type Options struct {
+	Callbacks []func(*Settings) error
+	OnApplied func(*Settings)
+type Queue struct {
+	Redis  *RedisQueue  `yaml:"redis" json:"redis"`
+	Memory *QueueMemory `yaml:"memory" json:"memory"`
+func (q Queue) Empty() bool
+func (q Queue) Open(ctx context.Context) (storage.Queue, error)
+type QueueMemory struct{ PoolSize uint }
+type RedisOptions struct {
+	URL        string `yaml:"url" json:"url"`
+	Network    string `yaml:"network" json:"network"`
+	Addr       string `yaml:"addr" json:"addr"`
+	Username   string `yaml:"username" json:"username"`
+	Password   string `yaml:"password" json:"password"`
+	DB         int    `yaml:"db" json:"db"`
+	PoolSize   int    `yaml:"pool_size" json:"pool_size"`
+	MaxRetries int    `yaml:"max_retries" json:"max_retries"`
+	TLS        *TLS   `yaml:"tls" json:"tls"`
+func (r RedisOptions) Open(ctx context.Context) (*goredis.Client, error)
+func (r RedisOptions) Options() (*goredis.Options, error)
+type RedisQueue struct {
+	RedisOptions        `yaml:",inline"`
+	Group               string `yaml:"group" json:"group"`
+	KeyPrefix           string `yaml:"key_prefix" json:"key_prefix"`
+	MaxAttempts         int    `yaml:"max_attempts" json:"max_attempts"`
+	ClaimMinIdleSeconds int    `yaml:"claim_min_idle_seconds" json:"claim_min_idle_seconds"`
+type RotationConfig struct {
+	MaxSize    int  `yaml:"maxSize" json:"maxSize"`
+	MaxAge     int  `yaml:"maxAge" json:"maxAge"`
+	MaxBackups int  `yaml:"maxBackups" json:"maxBackups"`
+	Compress   bool `yaml:"compress" json:"compress"`
+type SSL struct {
+	KeyStr string
+	Pem    string
+	Enable bool
+	Domain string
+type Settings struct {
+	Settings Config `yaml:"settings" json:"settings"`
+func Current() *Settings
+type TLS struct {
+	Cert string `yaml:"cert" json:"cert"`
+	Key  string `yaml:"key" json:"key"`
+	CA   string `yaml:"ca" json:"ca"`
+type Watcher struct {
+func Setup(ctx context.Context, s source.Source, options Options) (*Watcher, error)
+func (w *Watcher) Close() error
+
+## github.com/gatework/motor-core/sdk/contract/actions
+const (
+	DataScopeAll      = "1"
+	DataScopeCustom   = "2"
+	DataScopeDept     = "3"
+	DataScopeDeptTree = "4"
+	DataScopeSelf     = "5"
+const PermissionKey = "dataPermission"
+func IsValidDataScope(s string) bool
+func Permission(tableName string, p *DataPermission, enabled func() bool) func(db *gorm.DB) *gorm.DB
+func PermissionAction(enabled func() bool) gin.HandlerFunc
+type DataPermission struct {
+	DataScope string
+	UserId    int
+	DeptId    int
+	RoleId    int
+func GetPermissionFromContext(c *gin.Context) *DataPermission
+
+## github.com/gatework/motor-core/sdk/contract/app
+func Compare(a, b string) (int, error)
+func Register(m Manifest)
+func Snapshot() map[string]Manifest
+type Manifest struct {
+	Code string
+	Name string
+	Version string
+	Description string
+	Author      string
+	Requires []string
+	Pricing string
+	License string
+
+## github.com/gatework/motor-core/sdk/contract/dto
+func MakeCondition(q interface{}) func(db *gorm.DB) *gorm.DB
+func OrderDest(sort string, desc bool) func(db *gorm.DB) *gorm.DB
+func Paginate(pageSize, pageIndex int) func(db *gorm.DB) *gorm.DB
+type AutoForm struct {
+	Fields        []Field `json:"fields"`
+	FormRef       string  `json:"formRef"`
+	FormModel     string  `json:"formModel"`
+	Size          string  `json:"size"`
+	LabelPosition string  `json:"labelPosition"`
+	LabelWidth    int     `json:"labelWidth"`
+	FormRules     string  `json:"formRules"`
+	Gutter        int     `json:"gutter"`
+	Disabled      bool    `json:"disabled"`
+	Span          int     `json:"span"`
+	FormBtns      bool    `json:"formBtns"`
+type Config struct {
+	Label        string        `json:"label"`
+	LabelWidth   interface{}   `json:"labelWidth"`
+	ShowLabel    bool          `json:"showLabel"`
+	ChangeTag    bool          `json:"changeTag"`
+	Tag          string        `json:"tag"`
+	TagIcon      string        `json:"tagIcon"`
+	Required     bool          `json:"required"`
+	Layout       string        `json:"layout"`
+	Span         int           `json:"span"`
+	Document     string        `json:"document"`
+	RegList      []interface{} `json:"regList"`
+	FormId       int           `json:"formId"`
+	RenderKey    int64         `json:"renderKey"`
+	DefaultValue interface{}   `json:"defaultValue"`
+	ShowTip      bool          `json:"showTip,omitempty"`
+	ButtonText   string        `json:"buttonText,omitempty"`
+	FileSize     int           `json:"fileSize,omitempty"`
+	SizeUnit     string        `json:"sizeUnit,omitempty"`
+type Control interface {
+	Generate() Control
+	Bind(ctx *gin.Context) error
+	GenerateM() (models.ActiveRecord, error)
+	GetId() interface{}
+type Field struct {
+	Config        Config      `json:"__config__"`
+	Slot          Slot        `json:"__slot__"`
+	Placeholder   string      `json:"placeholder,omitempty"`
+	Style         Style       `json:"style,omitempty"`
+	Clearable     bool        `json:"clearable,omitempty"`
+	PrefixIcon    string      `json:"prefix-icon,omitempty"`
+	SuffixIcon    string      `json:"suffix-icon,omitempty"`
+	Maxlength     interface{} `json:"maxlength"`
+	ShowWordLimit bool        `json:"show-word-limit,omitempty"`
+	Readonly      bool        `json:"readonly,omitempty"`
+	Disabled      bool        `json:"disabled"`
+	VModel        string      `json:"__vModel__"`
+	Action        string      `json:"action,omitempty"`
+	Accept        string      `json:"accept,omitempty"`
+	Name          string      `json:"name,omitempty"`
+	AutoUpload    bool        `json:"auto-upload,omitempty"`
+	ListType      string      `json:"list-type,omitempty"`
+	Multiple      bool        `json:"multiple,omitempty"`
+	Filterable    bool        `json:"filterable,omitempty"`
+type GeneralDelDto struct {
+	Id  int   `uri:"id" json:"id" validate:"required"`
+	Ids []int `json:"ids"`
+func (g GeneralDelDto) GetIds() []int
+type GeneralGetDto struct {
+	Id int `uri:"id" json:"id" validate:"required"`
+type Index interface {
+	Generate() Index
+	Bind(ctx *gin.Context) error
+	GetPageIndex() int
+	GetPageSize() int
+	GetNeedSearch() interface{}
+type ObjectById struct {
+	Id  int   `uri:"id"`
+	Ids []int `json:"ids"`
+func (s *ObjectById) Bind(ctx *gin.Context) error
+func (s *ObjectById) GetId() interface{}
+type ObjectDeleteReq struct {
+	Ids []int `json:"ids"`
+func (s *ObjectDeleteReq) Bind(ctx *gin.Context) error
+func (s *ObjectDeleteReq) GetId() interface{}
+type ObjectGetReq struct {
+	Id int `uri:"id"`
+func (s *ObjectGetReq) Bind(ctx *gin.Context) error
+func (s *ObjectGetReq) GetId() interface{}
+type Option struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
+type Pagination struct {
+	PageIndex int `form:"pageIndex"`
+	PageSize  int `form:"pageSize"`
+func (m *Pagination) GetPageIndex() int
+func (m *Pagination) GetPageSize() int
+type Slot struct {
+	Prepend  string   `json:"prepend,omitempty"`
+	Append   string   `json:"append,omitempty"`
+	ListType bool     `json:"list-type,omitempty"`
+	Options  []Option `json:"options,omitempty"`
+type Style struct {
+	Width string `json:"width"`
+
+## github.com/gatework/motor-core/sdk/contract/migration
+const FrameworkAppCode = "core"
+func GetFilename(s string) string
+func NormalizeAppCode(code string) string
+func SetVersion(k string, f func(db *gorm.DB, version string) error)
+func Snapshot() map[string]Entry
+type AppMigrationFunc func(db *gorm.DB, version, appCode string) error
+type AppRegistrar struct {
+func ForApp(code string) *AppRegistrar
+func (a *AppRegistrar) AppCode() string
+func (a *AppRegistrar) SetVersion(k string, f AppMigrationFunc)
+type Entry struct {
+	AppCode string
+	Fn      func(db *gorm.DB, version string) error
+type Registry struct {
+func NewRegistry() *Registry
+func (r *Registry) ForApp(code string) *AppRegistrar
+func (r *Registry) SetVersion(k string, f func(db *gorm.DB, version string) error)
+func (r *Registry) Snapshot() map[string]Entry
+
+## github.com/gatework/motor-core/sdk/contract/models
+const (
+	Directory string = "M"
+	Menu string = "C"
+	Button string = "F"
+type ActiveRecord interface {
+	schema.Tabler
+	SetCreateBy(createBy int)
+	SetUpdateBy(updateBy int)
+	Generate() ActiveRecord
+	GetId() interface{}
+type BaseUser struct {
+	Username     string `json:"username" gorm:"type:varchar(100);comment:username"`
+	Salt         string `json:"-" gorm:"type:varchar(255);comment:salt;<-"`
+	PasswordHash string `json:"-" gorm:"type:varchar(128);comment:password hash;<-"`
+	Password     string `json:"password" gorm:"-"`
+func (u *BaseUser) GetPasswordHash() string
+func (u *BaseUser) SetPassword(value string)
+func (u *BaseUser) Verify(db *gorm.DB, tableName string) bool
+type ControlBy struct {
+	CreateBy int `json:"createBy" gorm:"index;comment:creator"`
+	UpdateBy int `json:"updateBy" gorm:"index;comment:updater"`
+func (e *ControlBy) SetCreateBy(createBy int)
+func (e *ControlBy) SetUpdateBy(updateBy int)
+type Migration struct {
+	Version   string    `gorm:"primaryKey"`
+	ApplyTime time.Time `gorm:"autoCreateTime"`
+	AppCode string `gorm:"type:varchar(64);not null;default:'';index:idx_sys_migration_app_code;comment:AppCode"`
+func (Migration) TableName() string
+type Model struct {
+	Id int `json:"id" gorm:"primaryKey;autoIncrement;comment:primary key"`
+type ModelTime struct {
+	CreatedAt time.Time `json:"createdAt" gorm:"comment:creation time"`
+	UpdatedAt time.Time `json:"updatedAt" gorm:"comment:last updated time"`
+	DeletedAt soft_delete.DeletedAt `json:"-" gorm:"softDelete:milli;index;comment:deletion time"`
+type Page struct {
+	List      interface{} `json:"list"`
+	Count     int         `json:"count"`
+	PageIndex int         `json:"pageIndex"`
+	PageSize  int         `json:"pageSize"`
+type Response struct {
+	Code int `json:"code" example:"200"`
+	Data interface{} `json:"data"`
+	Msg       string `json:"msg"`
+	RequestId string `json:"requestId"`
+func (res *Response) ReturnError(code int) *Response
+func (res *Response) ReturnOK() *Response
+
+## github.com/gatework/motor-core/sdk/contract/seed
+var ErrNoSeeder = errors.New("seed: no Seeder registered; the host must call seed.RegisterSeeder before any application migration calls SeedMenus")
+func RegisterSeeder(s Seeder)
+func SeedMenus(tx *gorm.DB, appCode string, menus []MenuSpec, apis []ApiSpec) error
+type ApiSpec struct {
+	Code   string
+	Title  string
+	Path   string
+	Method string
+	Handle string
+type MenuSpec struct {
+	Code string
+	Parent string
+	Kind  string
+	Title string
+	Path string
+	Component string
+	Icon string
+	Permission string
+	Sort int
+	ApiCodes []string
+type Seeder interface {
+	SeedMenus(tx *gorm.DB, appCode string, menus []MenuSpec, apis []ApiSpec) error
+
+## github.com/gatework/motor-core/sdk/pkg
+const (
+	TextBlack = iota + 30
+	TextRed
+	TextGreen
+	TextYellow
+	TextBlue
+	TextMagenta
+	TextCyan
+	TextWhite
+const (
+	TrafficKey = "X-Request-Id"
+	LoggerKey  = "_go-admin-logger-request"
+func Assert(condition bool, msg string, code ...int)
+func Black(msg string) string
+func Blue(msg string) string
+func CompareHashAndPassword(e string, p string) (bool, error)
+func Cyan(msg string) string
+func FileCreate(content bytes.Buffer, name string) error
+func FileMonitoringById(ctx context.Context, filePth string, id string, group string, hookfn func(context.Context, string, string, []byte))
+func GenerateMsgIDFromContext(c *gin.Context) string
+func GenerateRandomKey16() string
+func GenerateRandomKey20() string
+func GenerateRandomKey6() string
+func Get(url string) (string, error)
+func GetCurrentPath() string
+func GetCurrentTime() time.Time
+func GetCurrentTimeStr() string
+func GetFileSize(filename string) int64
+func GetLocalHost() string
+func GetLocation(ip, key string) string
+func GetORM(c *gin.Context) (*gorm.DB, error)
+func Green(msg string) string
+func HasError(err error, msg string, code ...int)
+func IdsStrToIdsIntGroup(key string, c *gin.Context) []int
+func IdsStrToIdsIntGroupStr(keys string) []int
+func Int64ToString(e int64) string
+func IntToString(e int) string
+func Magenta(msg string) string
+func PathCreate(dir string) error
+func PathExist(addr string) bool
+func Post(url string, data interface{}, contentType string) ([]byte, error)
+func Red(msg string) string
+func Round(f float64, n int) float64
+func SetColor(msg string, conf, bg, text int) string
+func SetPassword(password string, salt string) (verify string, err error)
+func StringToInt(e string) (int, error)
+func StructToJsonStr(e interface{}) (string, error)
+func Translate(form, to interface{})
+func UIntToString(e uint) string
+func White(msg string) string
+func Yellow(msg string) string
+type Ids struct {
+	Ids []int
+type Mode string
+const (
+	ModeDev  Mode = "dev"     //开发模式
+	ModeTest Mode = "test"    //测试模式
+	ModeProd Mode = "prod"    //生产模式
+	Mysql         = "mysql"   //mysql数据库标识
+	Sqlite        = "sqlite3" //sqlite
+func (e Mode) String() string
+type ReplaceHelper struct {
+	Root    string //路径
+	OldText string //需要替换的文本
+	NewText string //新的文本
+func (h *ReplaceHelper) DoWork() error
+
+## github.com/gatework/motor-core/sdk/pkg/cronjob
+func NewWithSeconds() *cron.Cron
+
+## github.com/gatework/motor-core/sdk/pkg/table
+func Crc16Hash(src string) string
+func Crc32Hash(src string) string
+func Crc8Hash(src string) string
+func CreateSubTable(f func(string) string)
+func DynamicTable(f func(string) string, baseTable, fieldValue string) func(db *gorm.DB) *gorm.DB
+
+## github.com/gatework/motor-core/sdk/pkg/utils
+func Base64ToImage(imageBase64 string) ([]byte, error)
+func CheckPermission(src string) bool
+func GetCurrentTimeStamp() int64
+func GetDirFiles(dir string) ([]string, error)
+func GetExt(fileName string) string
+func GetImgType(p string) (string, error)
+func GetSize(f multipart.File) (int, error)
+func GetType(p string) (string, error)
+func GetUUID() string
+func Hmac(data string) string
+func IsNotExistMkDir(src string) error
+func IsStringEmpty(str string) bool
+func MkDir(src string) error
+func NotExist(src string) bool
+func Open(name string, flag int, perm os.FileMode) (*os.File, error)
+func PathExists(path string) bool
+func RemoveRepByMap(slc []string) []string
+type APIException struct {
+	Code      int         `json:"code"`
+	Success   bool        `json:"success"`
+	Msg       string      `json:"msg"`
+	Timestamp int64       `json:"timestamp"`
+	Result    interface{} `json:"result"`
+func AuthError(message string) *APIException
+func NotFound() *APIException
+func ParameterError(message string) *APIException
+func ResponseJson(message string, data interface{}, success bool) *APIException
+func ServerError() *APIException
+func UnknownError(message string) *APIException
+func (e *APIException) Error() string
+type JSONTime struct {
+	time.Time
+func (t JSONTime) MarshalJSON() ([]byte, error)
+func (t *JSONTime) Scan(v interface{}) error
+func (t JSONTime) Value() (driver.Value, error)
+
+## github.com/gatework/motor-core/sdk/pkg/ws
+var (
+	ErrClosed     = errors.New("ws: manager closed")
+	ErrNotRunning = errors.New("ws: manager not running")
+	ErrNoClient   = errors.New("ws: client not found")
+	ErrSlowClient = errors.New("ws: client send queue full")
+type Manager struct {
+func New() *Manager
+func (m *Manager) Connect(ctx context.Context, id, group string, conn *websocket.Conn) error
+func (m *Manager) Disconnect(ctx context.Context, id, group string) error
+func (m *Manager) DisconnectHandler(c *gin.Context)
+func (m *Manager) Handler(upgrader websocket.Upgrader) gin.HandlerFunc
+func (m *Manager) Info() map[string]any
+func (m *Manager) Run(ctx context.Context) error
+func (m *Manager) Send(ctx context.Context, id, group string, payload []byte) error
+func (m *Manager) SendAll(ctx context.Context, payload []byte) error
+func (m *Manager) SendGroup(ctx context.Context, group string, payload []byte) error
+func (m *Manager) Shutdown(ctx context.Context) error
+
+## github.com/gatework/motor-core/sdk/runtime
+const (
+	JwtTokenCheck   = "JwtToken"
+	RoleCheck       = "AuthCheckRole"
+	PermissionCheck = "PermissionAction"
+const DefaultTenant = "default"
+type Application struct {
+func New() *Application
+func (a *Application) AddHandler(tenant string, h Handler)
+func (a *Application) AllHandlers() map[string][]Handler
+func (a *Application) App(tenant string) any
+func (e *Application) AppRoutersSealed() bool
+func (a *Application) Apps() map[string]any
+func (e *Application) BeforeSealed() bool
+func (e *Application) BeginShutdown()
+func (a *Application) Cache() storage.Cache
+func (a *Application) Casbin(tenant string) *casbin.SyncedEnforcer
+func (a *Application) CasbinExclude(tenant string) any
+func (a *Application) CasbinExclusions() map[string]any
+func (a *Application) Config(tenant string) map[string]any
+func (a *Application) ConfigValue(tenant, key string) any
+func (a *Application) Crontab(tenant string) *cron.Cron
+func (a *Application) Crontabs() map[string]*cron.Cron
+func (a *Application) DB(tenant string) *gorm.DB
+func (a *Application) Databases() map[string]*gorm.DB
+func (a *Application) DefaultTenant() string
+func (a *Application) Enforcers() map[string]*casbin.SyncedEnforcer
+func (a *Application) Engine() http.Handler
+func (e *Application) GetHandlerFunc(key string) (gin.HandlerFunc, bool)
+func (a *Application) Handlers(tenant string) []Handler
+func (a *Application) Logger() logger.Logger
+func (a *Application) Middleware(k string) any
+func (a *Application) Middlewares() map[string]any
+func (e *Application) PhaseSealed(p Phase) bool
+func (a *Application) Queue() storage.Queue
+func (a *Application) QueueForTenant(tenant string) *Queue
+func (a *Application) Routers() []Router
+func (e *Application) RunAppRouters()
+func (e *Application) RunBefore()
+func (e *Application) RunPhase(p Phase)
+func (e *Application) RunShutdown(ctx context.Context) error
+func (a *Application) SetApp(tenant string, v any)
+func (e *Application) SetAppRouters(appRouters func())
+func (e *Application) SetAppRoutersWith(appRouters func(), opts ...CallbackOption)
+func (e *Application) SetBefore(f func())
+func (e *Application) SetBeforeWith(f func(), opts ...CallbackOption)
+func (a *Application) SetCache(v storage.Cache)
+func (a *Application) SetCasbin(tenant string, v *casbin.SyncedEnforcer)
+func (a *Application) SetCasbinExclude(tenant string, v any)
+func (a *Application) SetConfig(tenant string, v map[string]any)
+func (a *Application) SetConfigValue(tenant, key string, v any)
+func (a *Application) SetCrontab(tenant string, v *cron.Cron)
+func (a *Application) SetDB(tenant string, db *gorm.DB)
+func (a *Application) SetDefaultTenant(v string)
+func (a *Application) SetEngine(v http.Handler)
+func (a *Application) SetLogger(v logger.Logger)
+func (a *Application) SetMiddleware(k string, v any)
+func (e *Application) SetPhase(p Phase, f func(), opts ...CallbackOption)
+func (a *Application) SetQueue(v storage.Queue)
+func (e *Application) SetShutdown(f func(context.Context), opts ...CallbackOption)
+type CallbackOption func(*callbackConfig)
+func WithFatal() CallbackOption
+func WithName(name string) CallbackOption
+type Config map[string]any
+type Handler func(*gin.RouterGroup, ...*gin.HandlerFunc)
+type Phase int
+const (
+	AfterResource Phase = 10
+	BeforeRouter Phase = 20
+	AfterListen Phase = 30
+	BeforeExit Phase = 40
+func (p Phase) String() string
+type Queue struct {
+func NewQueue(prefix string, q storage.Queue) *Queue
+func (q *Queue) Publish(ctx context.Context, msg storage.Message) error
+func (q *Queue) Run(ctx context.Context) error
+func (q *Queue) Shutdown(ctx context.Context) error
+func (q *Queue) Subscribe(ctx context.Context, topic string, h storage.Handler) error
+type Router struct{ HTTPMethod, RelativePath, Handler string }
+
+## github.com/gatework/motor-core/sdk/service
+type Service struct {
+	DB     *gorm.DB
+	Logger *logger.Helper
+	Cache  storage.Cache
+
+## github.com/gatework/motor-core/server
+type Option func(*options)
+func WithShutdownTimeout(d time.Duration) Option
+type Runnable interface{ Run(context.Context) error }
+type Server struct {
+func New(opts ...Option) *Server
+func (s *Server) Add(name string, r Runnable) error
+func (s *Server) Run(ctx context.Context) error
+
+## github.com/gatework/motor-core/server/listener
+type Option func(*options)
+func WithAddr(s string) Option
+func WithCert(s string) Option
+func WithEndHook(f func()) Option
+func WithHandler(handler http.Handler) Option
+func WithKey(s string) Option
+func WithStartedHook(f func()) Option
+type Server struct {
+func New(name string, opts ...Option) *Server
+func NewHealthz(opts ...Option) *Server
+func NewMetrics(opts ...Option) *Server
+func NewReadyz(opts ...Option) *Server
+func (e *Server) Options(opts ...Option)
+func (e *Server) Run(ctx context.Context) error
+func (e *Server) Shutdown(ctx context.Context) error
+func (e *Server) String() string
+
+## github.com/gatework/motor-core/storage
+const PrefixKey = "__host"
+var (
+	ErrQueueClosed = errors.New("storage: queue closed")
+	ErrTopicAlreadySubscribed = errors.New("storage: topic already subscribed")
+	ErrNoHandler = errors.New("storage: no handler for topic")
+	ErrNilHandler = errors.New("storage: nil handler")
+	ErrQueueAlreadyStarted = errors.New("storage: queue already started")
+var ErrCacheClosed = errors.New("storage: cache closed")
+var ErrCacheMiss = errors.New("storage: cache miss")
+type Cache interface {
+	Get(ctx context.Context, key string) (string, error)
+	Set(ctx context.Context, key, val string, ttl time.Duration) error
+	Del(ctx context.Context, keys ...string) error
+	Incr(ctx context.Context, key string, delta int64) (int64, error)
+	Expire(ctx context.Context, key string, ttl time.Duration) error
+	io.Closer
+func WithPrefix(c Cache, prefix string) Cache
+type Handler func(ctx context.Context, msg Message) error
+type Message struct {
+	ID string
+	Topic string
+	Values map[string]any
+	Attempts int
+type Queue interface {
+	Publish(ctx context.Context, msg Message) error
+	Subscribe(ctx context.Context, topic string, h Handler) error
+	Run(ctx context.Context) error
+	Shutdown(ctx context.Context) error
+
+## github.com/gatework/motor-core/storage/cache
+type Memory struct {
+func New(o Options) *Memory
+func (m *Memory) Close() error
+func (m *Memory) Del(ctx context.Context, keys ...string) error
+func (m *Memory) Expire(ctx context.Context, key string, ttl time.Duration) error
+func (m *Memory) Get(ctx context.Context, key string) (string, error)
+func (m *Memory) Incr(ctx context.Context, key string, delta int64) (int64, error)
+func (m *Memory) Set(ctx context.Context, key, val string, ttl time.Duration) error
+func (c *Memory) String() string
+type Options struct {
+	SweepInterval time.Duration
+	MaxEntries int
+
+## github.com/gatework/motor-core/storage/cachetest
+func Run(t *testing.T, newCache Factory)
+func RunQueue(t *testing.T, newQueue QueueFactory)
+type Factory func(t *testing.T) storage.Cache
+type QueueFactory func(t *testing.T) storage.Queue
+
+## github.com/gatework/motor-core/storage/queue
+type Memory struct {
+func New(size int) *Memory
+func (q *Memory) Publish(ctx context.Context, msg storage.Message) error
+func (q *Memory) Run(ctx context.Context) error
+func (q *Memory) Shutdown(ctx context.Context) error
+func (*Memory) String() string
+func (q *Memory) Subscribe(ctx context.Context, topic string, h storage.Handler) error
+
+## github.com/gatework/motor-core/storage/redis
+type Cache struct {
+func NewCache(client goredis.UniversalClient) *Cache
+func OpenCache(ctx context.Context, opts *goredis.Options) (*Cache, error)
+func (c *Cache) Close() error
+func (c *Cache) Del(ctx context.Context, keys ...string) error
+func (c *Cache) Expire(ctx context.Context, key string, ttl time.Duration) error
+func (c *Cache) Get(ctx context.Context, key string) (string, error)
+func (c *Cache) Incr(ctx context.Context, key string, delta int64) (int64, error)
+func (c *Cache) Set(ctx context.Context, key, val string, ttl time.Duration) error
+func (c *Cache) String() string
+type Queue struct {
+func NewQueue(client goredis.UniversalClient, opts QueueOptions) *Queue
+func OpenQueue(ctx context.Context, clientOpts *goredis.Options, opts QueueOptions) (*Queue, error)
+func (q *Queue) Publish(ctx context.Context, msg storage.Message) error
+func (q *Queue) Run(ctx context.Context) error
+func (q *Queue) Shutdown(ctx context.Context) error
+func (q *Queue) String() string
+func (q *Queue) Subscribe(ctx context.Context, topic string, h storage.Handler) error
+type QueueOptions struct {
+	Group string
+	Consumer string
+	KeyPrefix string
+	MaxAttempts int
+	Block time.Duration
+	ClaimMinIdle time.Duration
+	Batch int64
+
+## github.com/gatework/motor-core/tools/database
+type Configure interface {
+	Init(*gorm.Config, func(string) gorm.Dialector) (*gorm.DB, error)
+func NewConfigure(
+	dsn string,
+	maxIdleConns,
+	maxOpenConns,
+	connMaxIdleTime,
+	connMaxLifetime int,
+	registers []ResolverConfigure) Configure
+type DBConfig struct {
+func (e *DBConfig) Init(config *gorm.Config, open func(string) gorm.Dialector) (*gorm.DB, error)
+type DBResolverConfig struct {
+func (e *DBResolverConfig) Init(
+	register *dbresolver.DBResolver,
+	open func(string) gorm.Dialector) *dbresolver.DBResolver
+type ResolverConfigure interface {
+	Init(*dbresolver.DBResolver, func(string) gorm.Dialector) *dbresolver.DBResolver
+func NewResolverConfigure(sources, replicas []string, policy string, tables []string) ResolverConfigure
+
+## github.com/gatework/motor-core/tools/gorm/gormlog
+const (
+	Reset       = "\033[0m"
+	Red         = "\033[31m"
+	Green       = "\033[32m"
+	Yellow      = "\033[33m"
+	Blue        = "\033[34m"
+	Magenta     = "\033[35m"
+	Cyan        = "\033[36m"
+	White       = "\033[37m"
+	BlueBold    = "\033[34;1m"
+	MagentaBold = "\033[35;1m"
+	RedBold     = "\033[31;1m"
+	YellowBold  = "\033[33;1m"
+func New(config logger.Config) logger.Interface
+
+## github.com/gatework/motor-core/tools/language
+func ParseAcceptLanguage(languages string, supportedLanguages []string) []string
+
+## github.com/gatework/motor-core/tools/poster
+func GetImage(src string) (m image.Image, err error)
+func GetQRImage(url string, level qrcode.RecoveryLevel, size int) (image.Image, error)
+func LoadTextType(path string) (*truetype.Font, error)
+func Merge(png draw.Image, merged *os.File) error
+func MergeImage(PNG draw.Image, image image.Image, imageBound image.Point)
+func NewMerged(path string) (*os.File, error)
+func NewPNG(X0 int, Y0 int, X1 int, Y1 int) *image.RGBA
+type DImage struct {
+	PNG draw.Image //合并到的PNG切片,可用image.NewrRGBA设置
+	X   int        //横坐标
+	Y   int        //纵坐标
+type DText struct {
+	PNG   draw.Image //合并到的PNG切片,可用image.NewrRGBA设置
+	Title string     //文字
+	X     int        //横坐标
+	Y     int        //纵坐标
+	Size  float64
+	R     uint8
+	G     uint8
+	B     uint8
+	A     uint8
+func NewDrawText(png draw.Image) *DText
+func (dtext *DText) MergeText(title string, tf *truetype.Font, x int, y int, rect image.Rectangle) error
+func (dtext *DText) SetColor(R uint8, G uint8, B uint8)
+type Pt struct {
+	X int
+	Y int
+type Rect struct {
+	X0 int
+	X1 int
+	Y0 int
+	Y1 int
+
+## github.com/gatework/motor-core/tools/search
+const (
+	FromQueryTag = "search"
+	MySQL        = "mysql"
+	Postgres     = "postgres"
+func BuildJSONContainsClause(driver, column string, value any) (string, []any, error)
+func BuildJSONContainsOrNullClause(driver, column string, value any) (string, []any, error)
+type Clause struct {
+	SQL  string
+	Args []any
+type Condition struct {
+	Where []Clause
+	Or    []Clause
+	Order []string
+	Join  []Join
+func Resolve(driver string, q any) (Condition, error)
+type Join struct {
+	SQL       string
+	Condition Condition
+
+## github.com/gatework/motor-core/tools/transfer
+func Handler(handler http.Handler) gin.HandlerFunc
+
+## github.com/gatework/motor-core/tools/utils
+const (
+	RequestIDKey = "x-request-id"
+	UsernameKey = "x-username"
+var Cols = []string{"", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"}
+func ConvertNumToChars(num int) (string, error)
+func GetHeaderFirst(ctx context.Context, key string) string
+func GetRequestID(ctx context.Context) string
+func GetUsername(ctx context.Context) string
+func NewRequestID() string
+func WriteXlsx(sheet string, records interface{}) *excelize.File
+
