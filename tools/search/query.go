@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -187,10 +188,8 @@ func unwrapValue(v reflect.Value, active []pointerVisit) (reflect.Value, []point
 		}
 		if v.Kind() == reflect.Pointer {
 			visit := pointerVisit{typ: v.Type(), ptr: v.Pointer()}
-			for _, prev := range active {
-				if prev == visit {
-					return reflect.Value{}, active, fmt.Errorf("search: cyclic query value of type %s", v.Type())
-				}
+			if slices.Contains(active, visit) {
+				return reflect.Value{}, active, fmt.Errorf("search: cyclic query value of type %s", v.Type())
 			}
 			active = append(active, visit)
 		}

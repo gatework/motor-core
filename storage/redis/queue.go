@@ -361,17 +361,15 @@ func (q *Queue) Run(ctx context.Context) error {
 		// wait for the caller to give up. Said out loud, because a queue that
 		// consumes nothing is almost always a wiring mistake — Subscribe has to
 		// happen before Run, and a caller that starts first gets silence.
-		slog.Warn("queue: started with no subscriptions, nothing will be consumed",
+		slog.WarnContext(ctx, "queue: started with no subscriptions, nothing will be consumed",
 			"group", q.opts.Group)
 		<-ctx.Done()
 		return nil
 	}
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		q.reclaimLoop(ctx, topics)
-	}()
+	})
 
 	// XREADGROUP takes every key first and every start ID second. One read
 	// covers every topic, so an idle queue costs one round trip per Block
@@ -415,7 +413,7 @@ func (q *Queue) Run(ctx context.Context) error {
 				if err := q.ensureGroup(ctx, t); err != nil {
 					recreated = false
 					if ctx.Err() == nil {
-						slog.Warn("queue: could not recreate the consumer group",
+						slog.WarnContext(ctx, "queue: could not recreate the consumer group",
 							"topic", t, "error", err)
 					}
 				}
@@ -619,12 +617,12 @@ func (q *Queue) Shutdown(ctx context.Context) error {
 const emptyField = "go-admin:empty"
 
 // encodeValues renders each value as JSON, because a stream field is a string.
-func encodeValues(in map[string]interface{}) (map[string]interface{}, error) {
+func encodeValues(in map[string]any) (map[string]any, error) {
 	if len(in) == 0 {
-		return map[string]interface{}{emptyField: ""}, nil
+		return map[string]any{emptyField: ""}, nil
 	}
 
-	out := make(map[string]interface{}, len(in))
+	out := make(map[string]any, len(in))
 	for k, v := range in {
 		b, err := json.Marshal(v)
 		if err != nil {
@@ -635,14 +633,14 @@ func encodeValues(in map[string]interface{}) (map[string]interface{}, error) {
 	return out, nil
 }
 
-func decodeValues(in map[string]interface{}) map[string]interface{} {
+func decodeValues(in map[string]any) map[string]any {
 	if len(in) == 1 {
 		if v, ok := in[emptyField]; ok && v == "" {
-			return map[string]interface{}{}
+			return map[string]any{}
 		}
 	}
 
-	out := make(map[string]interface{}, len(in))
+	out := make(map[string]any, len(in))
 	for k, v := range in {
 		s, ok := v.(string)
 		if !ok {
@@ -650,7 +648,7 @@ func decodeValues(in map[string]interface{}) map[string]interface{} {
 			continue
 		}
 
-		var decoded interface{}
+		var decoded any
 		if err := json.Unmarshal([]byte(s), &decoded); err != nil {
 			// Written by something other than this package; pass it through as
 			// the string Redis returned.

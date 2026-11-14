@@ -11,7 +11,7 @@ type Responses interface {
 	SetCode(int32)
 	SetTraceID(string)
 	SetMsg(string)
-	SetData(interface{})
+	SetData(any)
 	SetSuccess(bool)
 	Clone() Responses
 }

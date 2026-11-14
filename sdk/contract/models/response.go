@@ -5,7 +5,7 @@ type Response struct {
 	// Code is the business status code.
 	Code int `json:"code" example:"200"`
 	// Data is the payload.
-	Data interface{} `json:"data"`
+	Data any `json:"data"`
 	// Msg is a human-readable message.
 	Msg       string `json:"msg"`
 	RequestId string `json:"requestId"`
@@ -13,10 +13,10 @@ type Response struct {
 
 // Page wraps a list result with its pagination metadata.
 type Page struct {
-	List      interface{} `json:"list"`
-	Count     int         `json:"count"`
-	PageIndex int         `json:"pageIndex"`
-	PageSize  int         `json:"pageSize"`
+	List      any `json:"list"`
+	Count     int `json:"count"`
+	PageIndex int `json:"pageIndex"`
+	PageSize  int `json:"pageSize"`
 }
 
 // ReturnOK marks the response as successful.

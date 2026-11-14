@@ -5,8 +5,9 @@ import (
 	"testing"
 	"time"
 
-	logCore "github.com/gatework/motor-core/logger"
 	"gorm.io/gorm/logger"
+
+	logCore "github.com/gatework/motor-core/logger"
 )
 
 func TestNew(t *testing.T) {

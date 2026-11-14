@@ -1,9 +1,8 @@
 package logger
 
-import "context"
-
 import (
 	"bytes"
+	"context"
 	"strings"
 	"testing"
 )
@@ -23,7 +22,7 @@ func TestSanitizerLogger_Basic(t *testing.T) {
 	})
 
 	// 记录包含敏感字段的日志
-	sanitizer.With(FieldsFromMap(map[string]interface{}{
+	sanitizer.With(FieldsFromMap(map[string]any{
 		"phone":    "13812345678",
 		"password": "secret123",
 		"username": "testuser",
@@ -77,7 +76,7 @@ func TestSanitizerLogger_PhoneMask(t *testing.T) {
 	for _, tc := range testCases {
 		buf.Reset()
 
-		sanitizer.With(FieldsFromMap(map[string]interface{}{
+		sanitizer.With(FieldsFromMap(map[string]any{
 			"phone": tc.input,
 		})...,
 		).Log(context.Background(), InfoLevel, "test")
@@ -110,7 +109,7 @@ func TestSanitizerLogger_IDCardMask(t *testing.T) {
 	idcard := "110101199001011234"
 	expected := "110***********1234"
 
-	sanitizer.With(FieldsFromMap(map[string]interface{}{
+	sanitizer.With(FieldsFromMap(map[string]any{
 		"idcard": idcard,
 	})...,
 	).Log(context.Background(), InfoLevel, "test")
@@ -141,7 +140,7 @@ func TestSanitizerLogger_TokenHash(t *testing.T) {
 
 	token := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
 
-	sanitizer.With(FieldsFromMap(map[string]interface{}{
+	sanitizer.With(FieldsFromMap(map[string]any{
 		"token": token,
 	})...,
 	).Log(context.Background(), InfoLevel, "test")
@@ -170,7 +169,7 @@ func TestSanitizerLogger_PasswordRemove(t *testing.T) {
 
 	sanitizer := NewSanitizerLogger(baseLogger, DefaultSanitizerConfig)
 
-	sanitizer.With(FieldsFromMap(map[string]interface{}{
+	sanitizer.With(FieldsFromMap(map[string]any{
 		"password": "MySecretPassword123!",
 		"passwd":   "AnotherSecret",
 	})...,
@@ -204,7 +203,7 @@ func TestSanitizerLogger_CaseInsensitive(t *testing.T) {
 	sanitizer := NewSanitizerLogger(baseLogger, DefaultSanitizerConfig)
 
 	// 测试不同大小写
-	testFields := map[string]interface{}{
+	testFields := map[string]any{
 		"Phone":    "13800001111",
 		"PHONE":    "13800002222",
 		"PhoneNum": "13800003333", // 不匹配（仅精确匹配 "phone"）
@@ -237,7 +236,7 @@ func TestSanitizerLogger_SuffixMatch(t *testing.T) {
 	sanitizer := NewSanitizerLogger(baseLogger, DefaultSanitizerConfig)
 
 	// 测试后缀匹配（*_token）
-	sanitizer.With(FieldsFromMap(map[string]interface{}{
+	sanitizer.With(FieldsFromMap(map[string]any{
 		"access_token":  "abc123",
 		"refresh_token": "def456",
 		"my_token":      "ghi789",
@@ -279,7 +278,7 @@ func TestSanitizerLogger_CustomRule(t *testing.T) {
 		Rules:   customRules,
 	})
 
-	sanitizer.With(FieldsFromMap(map[string]interface{}{
+	sanitizer.With(FieldsFromMap(map[string]any{
 		"credit_card": "1234567812345678",
 	})...,
 	).Log(context.Background(), InfoLevel, "test")
@@ -311,7 +310,7 @@ func TestSanitizerLogger_NoSanitization(t *testing.T) {
 	})
 
 	phone := "13812345678"
-	sanitizer.With(FieldsFromMap(map[string]interface{}{
+	sanitizer.With(FieldsFromMap(map[string]any{
 		"phone": phone,
 	})...,
 	).Log(context.Background(), InfoLevel, "test")
@@ -335,7 +334,7 @@ func TestSanitizerLogger_MultipleFields(t *testing.T) {
 
 	sanitizer := NewSanitizerLogger(baseLogger, DefaultSanitizerConfig)
 
-	sanitizer.With(FieldsFromMap(map[string]interface{}{
+	sanitizer.With(FieldsFromMap(map[string]any{
 		"username":     "john_doe",
 		"phone":        "13812345678",
 		"idcard":       "110101199001011234",
@@ -384,8 +383,8 @@ func TestSanitizerLogger_FieldsChaining(t *testing.T) {
 
 	// 链式调用 Fields
 	sanitizer.
-		With(FieldsFromMap(map[string]interface{}{"phone": "13800001111"})...).
-		With(FieldsFromMap(map[string]interface{}{"password": "secret"})...).
+		With(FieldsFromMap(map[string]any{"phone": "13800001111"})...).
+		With(FieldsFromMap(map[string]any{"password": "secret"})...).
 		Log(context.Background(), InfoLevel, "test")
 
 	output := buf.String()
@@ -411,7 +410,7 @@ func TestSanitizerLogger_NonStringValue(t *testing.T) {
 	sanitizer := NewSanitizerLogger(baseLogger, DefaultSanitizerConfig)
 
 	// 包含非字符串值
-	sanitizer.With(FieldsFromMap(map[string]interface{}{
+	sanitizer.With(FieldsFromMap(map[string]any{
 		"phone":    123456789,  // int（不脱敏）
 		"password": true,       // bool（不脱敏）
 		"token":    nil,        // nil（不脱敏）
@@ -441,14 +440,14 @@ func BenchmarkSanitizerLogger(b *testing.B) {
 
 	sanitizer := NewSanitizerLogger(baseLogger, DefaultSanitizerConfig)
 
-	fields := map[string]interface{}{
+	fields := map[string]any{
 		"phone":    "13812345678",
 		"password": "secret123",
 		"username": "testuser",
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		sanitizer.With(FieldsFromMap(fields)...).Log(context.Background(), InfoLevel, "benchmark")
 	}
 }
@@ -463,13 +462,13 @@ func BenchmarkSanitizerLogger_vs_NoSanitize(b *testing.B) {
 			WithLevel(InfoLevel),
 		)
 
-		fields := map[string]interface{}{
+		fields := map[string]any{
 			"phone":    "13812345678",
 			"username": "testuser",
 		}
 
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for range b.N {
 			logger.With(FieldsFromMap(fields)...).Log(context.Background(), InfoLevel, "test")
 		}
 	})
@@ -481,13 +480,13 @@ func BenchmarkSanitizerLogger_vs_NoSanitize(b *testing.B) {
 		)
 		sanitizer := NewSanitizerLogger(baseLogger, DefaultSanitizerConfig)
 
-		fields := map[string]interface{}{
+		fields := map[string]any{
 			"phone":    "13812345678",
 			"username": "testuser",
 		}
 
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for range b.N {
 			sanitizer.With(FieldsFromMap(fields)...).Log(context.Background(), InfoLevel, "test")
 		}
 	})
@@ -506,7 +505,7 @@ func TestSanitizerLogger_EmailMask(t *testing.T) {
 
 	email := "zhang@example.com"
 
-	sanitizer.With(FieldsFromMap(map[string]interface{}{
+	sanitizer.With(FieldsFromMap(map[string]any{
 		"email": email,
 	})...,
 	).Log(context.Background(), InfoLevel, "test")
@@ -548,7 +547,7 @@ func TestSanitizerLogger_CustomMatcher(t *testing.T) {
 		},
 	})
 
-	sanitizer.With(FieldsFromMap(map[string]interface{}{
+	sanitizer.With(FieldsFromMap(map[string]any{
 		"secret_key":   "my_secret",
 		"secret_value": "confidential",
 		"public_info":  "visible",

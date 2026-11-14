@@ -75,26 +75,26 @@ func (l *gormLogger) LogMode(level logger.LogLevel) logger.Interface {
 }
 
 // Info print info
-func (l gormLogger) Info(ctx context.Context, msg string, data ...interface{}) {
+func (l gormLogger) Info(ctx context.Context, msg string, data ...any) {
 	if l.LogLevel >= logger.Info {
 		log := l.getLogger(ctx)
-		log.Log(ctx, loggerCore.InfoLevel, fmt.Sprintf(l.infoStr+msg, append([]interface{}{fileWithLineNum()}, data...)...))
+		log.Log(ctx, loggerCore.InfoLevel, fmt.Sprintf(l.infoStr+msg, append([]any{fileWithLineNum()}, data...)...))
 	}
 }
 
 // Warn print warn messages
-func (l gormLogger) Warn(ctx context.Context, msg string, data ...interface{}) {
+func (l gormLogger) Warn(ctx context.Context, msg string, data ...any) {
 	if l.LogLevel >= logger.Warn {
 		log := l.getLogger(ctx)
-		log.Log(ctx, loggerCore.WarnLevel, fmt.Sprintf(l.warnStr+msg, append([]interface{}{fileWithLineNum()}, data...)...))
+		log.Log(ctx, loggerCore.WarnLevel, fmt.Sprintf(l.warnStr+msg, append([]any{fileWithLineNum()}, data...)...))
 	}
 }
 
 // Error print error messages
-func (l gormLogger) Error(ctx context.Context, msg string, data ...interface{}) {
+func (l gormLogger) Error(ctx context.Context, msg string, data ...any) {
 	if l.LogLevel >= logger.Error {
 		log := l.getLogger(ctx)
-		log.Log(ctx, loggerCore.ErrorLevel, fmt.Sprintf(l.errStr+msg, append([]interface{}{fileWithLineNum()}, data...)...))
+		log.Log(ctx, loggerCore.ErrorLevel, fmt.Sprintf(l.errStr+msg, append([]any{fileWithLineNum()}, data...)...))
 	}
 }
 

@@ -25,14 +25,14 @@ func (t JSONTime) MarshalJSON() ([]byte, error) {
 // Value insert timestamp into mysql need this function.
 func (t JSONTime) Value() (driver.Value, error) {
 	var zeroTime time.Time
-	if t.Time.UnixNano() == zeroTime.UnixNano() {
+	if t.UnixNano() == zeroTime.UnixNano() {
 		return nil, nil
 	}
 	return t.Time, nil
 }
 
 // Scan valueof time.Time
-func (t *JSONTime) Scan(v interface{}) error {
+func (t *JSONTime) Scan(v any) error {
 	value, ok := v.(time.Time)
 	if ok {
 		*t = JSONTime{Time: value}

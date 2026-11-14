@@ -18,7 +18,7 @@ type Options struct {
 	Level Level
 	// Fields are fields to always be logged
 	// Fields 是始终要记录的字段
-	Fields map[string]interface{}
+	Fields map[string]any
 	// Out is the output writer for the logger. default is `os.Stderr`
 	// Out 是日志记录器的输出写入器，默认是 `os.Stderr`
 	Out io.Writer
@@ -60,7 +60,7 @@ type Options struct {
 
 // WithFields sets default fields for the logger
 // WithFields 设置日志记录器的默认字段
-func WithFields(fields map[string]interface{}) Option {
+func WithFields(fields map[string]any) Option {
 	return func(args *Options) {
 		args.Fields = copyFields(fields)
 	}
@@ -181,7 +181,7 @@ func WithSanitizer(config SanitizerConfig) Option {
 func DefaultOptions() Options {
 	return Options{
 		Level:           InfoLevel,
-		Fields:          make(map[string]interface{}),
+		Fields:          make(map[string]any),
 		Out:             nil,
 		CallerSkipCount: 3,
 		Name:            "",

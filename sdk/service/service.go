@@ -2,9 +2,10 @@
 package service
 
 import (
+	"gorm.io/gorm"
+
 	"github.com/gatework/motor-core/logger"
 	"github.com/gatework/motor-core/storage"
-	"gorm.io/gorm"
 )
 
 // Service carries dependencies, not request context or accumulated errors.

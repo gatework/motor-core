@@ -40,7 +40,7 @@ func TestExpiredItemsAreCollected(t *testing.T) {
 	m := New(Options{SweepInterval: 10 * time.Millisecond})
 	defer m.Close()
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		storeExpired(m, fmt.Sprintf("k%d", i))
 	}
 	if countEntries(m) == 0 {

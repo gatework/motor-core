@@ -59,9 +59,9 @@ type GeneralGetDto struct {
 // which is correct even when a multi-tenant host has more than one database
 // open with different drivers. A host-level driver variable can only ever
 // hold one of them.
-func MakeCondition(q interface{}) func(db *gorm.DB) *gorm.DB {
+func MakeCondition(q any) func(db *gorm.DB) *gorm.DB {
 	return func(db *gorm.DB) *gorm.DB {
-		condition, err := search.Resolve(db.Dialector.Name(), q)
+		condition, err := search.Resolve(db.Name(), q)
 		if err != nil {
 			db.AddError(err)
 			return db
@@ -89,10 +89,7 @@ func MakeCondition(q interface{}) func(db *gorm.DB) *gorm.DB {
 // Paginate is a GORM scope applying offset/limit for the given page.
 func Paginate(pageSize, pageIndex int) func(db *gorm.DB) *gorm.DB {
 	return func(db *gorm.DB) *gorm.DB {
-		offset := (pageIndex - 1) * pageSize
-		if offset < 0 {
-			offset = 0
-		}
+		offset := max((pageIndex-1)*pageSize, 0)
 		return db.Offset(offset).Limit(pageSize)
 	}
 }

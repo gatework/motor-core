@@ -12,7 +12,7 @@ type probeIndex struct{ Pagination }
 
 func (p *probeIndex) Generate() Index             { return p }
 func (p *probeIndex) Bind(ctx *gin.Context) error { return nil }
-func (p *probeIndex) GetNeedSearch() interface{}  { return p }
+func (p *probeIndex) GetNeedSearch() any          { return p }
 
 var _ Index = &probeIndex{}
 

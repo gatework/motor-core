@@ -10,7 +10,7 @@ import (
 var Cols = []string{"", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"}
 
 // WriteXlsx 填充excel
-func WriteXlsx(sheet string, records interface{}) *excelize.File {
+func WriteXlsx(sheet string, records any) *excelize.File {
 	xlsx := excelize.NewFile()         // new file
 	index, err := xlsx.NewSheet(sheet) // new sheet
 	if err != nil {

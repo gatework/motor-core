@@ -115,7 +115,7 @@ func BenchmarkRedisQueuePublish(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	values := map[string]interface{}{"k": "v"}
+	values := map[string]any{"k": "v"}
 
 	b.ReportAllocs()
 	b.ResetTimer()

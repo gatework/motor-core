@@ -1,8 +1,9 @@
 package runtime
 
 import (
-	"github.com/gin-gonic/gin"
 	"testing"
+
+	"github.com/gin-gonic/gin"
 )
 
 func TestRegistrySnapshotsOwnTheirContainers(t *testing.T) {

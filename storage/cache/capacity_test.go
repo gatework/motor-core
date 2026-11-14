@@ -20,7 +20,7 @@ func TestCapacityIsBounded(t *testing.T) {
 	m := New(Options{MaxEntries: cap})
 	defer func() { _ = m.Close() }()
 
-	for i := 0; i < cap*10; i++ {
+	for i := range cap * 10 {
 		if err := m.Set(ctx, "k"+strconv.Itoa(i), "v", time.Hour); err != nil {
 			t.Fatal(err)
 		}
@@ -45,7 +45,7 @@ func TestEvictionPrefersExpiredEntries(t *testing.T) {
 	defer func() { _ = m.Close() }()
 
 	// Fill with entries that expire almost immediately.
-	for i := 0; i < cap; i++ {
+	for i := range cap {
 		if err := m.Set(ctx, "old"+strconv.Itoa(i), "v", time.Millisecond); err != nil {
 			t.Fatal(err)
 		}
@@ -54,14 +54,14 @@ func TestEvictionPrefersExpiredEntries(t *testing.T) {
 
 	// Now write live entries. They should displace the expired ones.
 	const live = 1000
-	for i := 0; i < live; i++ {
+	for i := range live {
 		if err := m.Set(ctx, "live"+strconv.Itoa(i), "v", time.Hour); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	survived := 0
-	for i := 0; i < live; i++ {
+	for i := range live {
 		if _, err := m.Get(ctx, "live"+strconv.Itoa(i)); err == nil {
 			survived++
 		}
@@ -83,7 +83,7 @@ func TestUnlimitedIsOptOut(t *testing.T) {
 	defer func() { _ = m.Close() }()
 
 	const n = 5000
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if err := m.Set(ctx, "k"+strconv.Itoa(i), "v", time.Hour); err != nil {
 			t.Fatal(err)
 		}
@@ -121,7 +121,7 @@ func BenchmarkSetAtCapacity(b *testing.B) {
 	m := New(Options{MaxEntries: capacity})
 	defer func() { _ = m.Close() }()
 
-	for i := 0; i < capacity; i++ {
+	for i := range capacity {
 		if err := m.Set(ctx, "fill"+strconv.Itoa(i), "v", time.Hour); err != nil {
 			b.Fatal(err)
 		}

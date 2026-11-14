@@ -39,7 +39,7 @@ type Record struct {
 	Metadata map[string]string `json:"metadata"`
 	// Value contains log entry
 	// 包含日志条目的值
-	Message interface{} `json:"message"`
+	Message any `json:"message"`
 }
 
 // Stream returns a log stream
@@ -59,7 +59,7 @@ func TextFormat(r Record) string {
 	var sb strings.Builder
 	sb.WriteString(r.Timestamp.Format("2006-01-02 15:04:05"))
 	sb.WriteString(" ")
-	sb.WriteString(fmt.Sprintf("%v", r.Message))
+	fmt.Fprintf(&sb, "%v", r.Message)
 	sb.WriteString(" ")
 	return sb.String()
 }

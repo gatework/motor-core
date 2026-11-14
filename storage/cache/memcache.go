@@ -93,7 +93,7 @@ func (m *Memory) shard(key string) *memShard {
 		prime32  = uint32(16777619)
 	)
 	h := offset32
-	for i := 0; i < len(key); i++ {
+	for i := range len(key) {
 		h ^= uint32(key[i])
 		h *= prime32
 	}

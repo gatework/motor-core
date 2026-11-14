@@ -89,8 +89,7 @@ func (s *Server) Run(ctx context.Context) error {
 	for i, r := range services {
 		runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 		cancels[i] = cancel
-		runs.Add(1)
-		go func() { defer runs.Done(); results <- serviceResult{name: names[i], err: r.Run(runCtx)} }()
+		runs.Go(func() { ; results <- serviceResult{name: names[i], err: r.Run(runCtx)} })
 	}
 	defer func() {
 		for _, cancel := range cancels {
@@ -125,12 +124,10 @@ running:
 			continue
 		}
 		pending++
-		shutdowns.Add(1)
-		go func() {
-			defer shutdowns.Done()
+		shutdowns.Go(func() {
 			defer cancels[i]()
 			results <- serviceResult{name: names[i], err: closer.Shutdown(shutdownCtx)}
-		}()
+		})
 	}
 	for pending > 0 {
 		select {

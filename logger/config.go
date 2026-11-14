@@ -39,7 +39,7 @@ type CoreConfig struct {
 	Name string `json:"name" yaml:"name"`
 
 	// Fields 默认字段（所有日志都会包含）
-	Fields map[string]interface{} `json:"fields" yaml:"fields"`
+	Fields map[string]any `json:"fields" yaml:"fields"`
 }
 
 // AdapterConfig 适配器配置

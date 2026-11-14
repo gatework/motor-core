@@ -28,7 +28,7 @@ func loadedMemory(t *testing.T) *memory {
 func TestWatcherStopIsSafeUnderConcurrency(t *testing.T) {
 	m := loadedMemory(t)
 
-	for i := 0; i < 500; i++ {
+	for range 500 {
 		w, err := m.Watch("a")
 		if err != nil {
 			t.Fatalf("Watch: %v", err)
@@ -36,15 +36,13 @@ func TestWatcherStopIsSafeUnderConcurrency(t *testing.T) {
 
 		var wg sync.WaitGroup
 		start := make(chan struct{})
-		for j := 0; j < 16; j++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+		for range 16 {
+			wg.Go(func() {
 				<-start
 				if err := w.Stop(); err != nil {
 					t.Errorf("Stop: %v", err)
 				}
-			}()
+			})
 		}
 		close(start)
 		wg.Wait()
@@ -57,7 +55,7 @@ func TestWatcherStopIsSafeUnderConcurrency(t *testing.T) {
 func TestStopDuringUpdateDoesNotPanic(t *testing.T) {
 	m := loadedMemory(t)
 
-	for i := 0; i < 500; i++ {
+	for range 500 {
 		w, err := m.Watch("a")
 		if err != nil {
 			t.Fatalf("Watch: %v", err)
@@ -151,20 +149,18 @@ func TestCloseStopsAWatchThatCannotStart(t *testing.T) {
 // Close carried the same select-then-close as the watcher, and the loader is
 // closed both by its owner and by whatever is shutting the process down.
 func TestLoaderCloseIsSafeUnderConcurrency(t *testing.T) {
-	for i := 0; i < 500; i++ {
+	for range 500 {
 		m := NewLoader().(*memory)
 
 		var wg sync.WaitGroup
 		start := make(chan struct{})
-		for j := 0; j < 16; j++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+		for range 16 {
+			wg.Go(func() {
 				<-start
 				if err := m.Close(); err != nil {
 					t.Errorf("Close: %v", err)
 				}
-			}()
+			})
 		}
 		close(start)
 		wg.Wait()

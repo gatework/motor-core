@@ -18,7 +18,7 @@ func GetCurrentTime() time.Time {
 	return time.Now()
 }
 
-func StructToJsonStr(e interface{}) (string, error) {
+func StructToJsonStr(e any) (string, error) {
 	if b, err := json.Marshal(e); err == nil {
 		return string(b), err
 	} else {

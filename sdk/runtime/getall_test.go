@@ -19,9 +19,7 @@ func TestGetAllDBIsSafeAgainstAWriter(t *testing.T) {
 	stop := make(chan struct{})
 	var wg sync.WaitGroup
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for i := 0; ; i++ {
 			select {
 			case <-stop:
@@ -30,11 +28,9 @@ func TestGetAllDBIsSafeAgainstAWriter(t *testing.T) {
 			}
 			e.SetDB(string(rune('a'+i%26)), &gorm.DB{})
 		}
-	}()
+	})
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for {
 			select {
 			case <-stop:
@@ -44,7 +40,7 @@ func TestGetAllDBIsSafeAgainstAWriter(t *testing.T) {
 			for range e.Databases() {
 			}
 		}
-	}()
+	})
 
 	time.Sleep(200 * time.Millisecond)
 	close(stop)

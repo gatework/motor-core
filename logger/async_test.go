@@ -1,10 +1,9 @@
 package logger
 
-import "fmt"
-import "context"
-
 import (
 	"bytes"
+	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -157,7 +156,7 @@ func TestAsyncLogger_GracefulShutdown(t *testing.T) {
 	})
 
 	// 写入多条日志
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		asyncLogger.Log(context.Background(), InfoLevel, fmt.Sprintf("message %d", i))
 	}
 
@@ -169,7 +168,7 @@ func TestAsyncLogger_GracefulShutdown(t *testing.T) {
 	// 验证所有日志都已写入
 	stopAsync(t, asyncLogger)
 	output := buf.String()
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		expected := "message"
 		if !strings.Contains(output, expected) {
 			t.Errorf("Expected '%s' in output, got: %s", expected, output)
@@ -250,7 +249,7 @@ func TestAsyncLogger_Fields(t *testing.T) {
 	})
 
 	// 使用 Fields
-	asyncLogger.With(FieldsFromMap(map[string]interface{}{
+	asyncLogger.With(FieldsFromMap(map[string]any{
 		"user_id": 123,
 		"action":  "login",
 	})...,
@@ -296,9 +295,9 @@ func TestAsyncLogger_HighConcurrency(t *testing.T) {
 	const logsPerGoroutine = 100
 
 	done := make(chan bool)
-	for g := 0; g < goroutines; g++ {
+	for g := range goroutines {
 		go func(id int) {
-			for i := 0; i < logsPerGoroutine; i++ {
+			for i := range logsPerGoroutine {
 				asyncLogger.Log(context.Background(), InfoLevel, fmt.Sprintf("goroutine %d message %d", id, i))
 			}
 			done <- true
@@ -306,7 +305,7 @@ func TestAsyncLogger_HighConcurrency(t *testing.T) {
 	}
 
 	// 等待所有 goroutine 完成
-	for g := 0; g < goroutines; g++ {
+	for range goroutines {
 		<-done
 	}
 
@@ -344,7 +343,7 @@ func TestAsyncLogger_ErrorLevel(t *testing.T) {
 	})
 
 	// 先填满缓冲区
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		asyncLogger.Log(context.Background(), InfoLevel, "filler")
 	}
 
@@ -382,7 +381,7 @@ func TestAsyncLogger_GetStats(t *testing.T) {
 	})
 
 	// 写入超过缓冲区的日志
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		asyncLogger.Log(context.Background(), InfoLevel, "message")
 	}
 
@@ -424,7 +423,7 @@ func TestAsyncLogger_BlockPolicy(t *testing.T) {
 	})
 
 	// 写入大量日志（应该阻塞但不丢失）
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		asyncLogger.Log(context.Background(), InfoLevel, fmt.Sprintf("message %d", i))
 	}
 
@@ -468,7 +467,7 @@ func TestAsyncLogger_SamplePolicy(t *testing.T) {
 	})
 
 	// 写入大量日志
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		asyncLogger.Log(context.Background(), InfoLevel, "message")
 	}
 

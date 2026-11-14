@@ -2,7 +2,7 @@
 package encoder
 
 type Encoder interface {
-	Encode(interface{}) ([]byte, error)
-	Decode([]byte, interface{}) error
+	Encode(any) ([]byte, error)
+	Decode([]byte, any) error
 	String() string
 }

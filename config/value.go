@@ -42,7 +42,7 @@ func (v *value) StringMap(def map[string]string) map[string]string {
 	return maps.Clone(def)
 }
 
-func (v *value) Scan(val interface{}) error {
+func (v *value) Scan(val any) error {
 	return nil
 }
 

@@ -253,7 +253,7 @@ func testStringValuesRoundTrip(t *testing.T, newQueue QueueFactory) {
 
 	publish(t, q, storage.Message{
 		Topic:  "orders",
-		Values: map[string]interface{}{"id": "42", "note": ""},
+		Values: map[string]any{"id": "42", "note": ""},
 	})
 
 	got := c.await(t, 1)[0]

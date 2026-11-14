@@ -5,8 +5,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/gatework/motor-core/logger"
 	"gorm.io/gorm"
+
+	"github.com/gatework/motor-core/logger"
 )
 
 // allPhases is every phase the contract names, for the tests that have to
@@ -288,11 +289,11 @@ func TestPhaseAccessorsAreRaceFree(t *testing.T) {
 
 	const goroutines, iters = 16, 50
 	var wg sync.WaitGroup
-	for i := 0; i < goroutines; i++ {
+	for i := range goroutines {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			for j := 0; j < iters; j++ {
+			for j := range iters {
 				p := allPhases[(i+j)%len(allPhases)]
 				switch (i + j) % 3 {
 				case 0:

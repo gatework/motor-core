@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"strings"
 	"sync"
@@ -20,7 +21,7 @@ type textSink struct {
 	closed bool
 }
 
-func newDefault() Logger {
+func newDefault() *Text {
 	level, err := GetLevel(os.Getenv("GO_ADMIN_LOG_LEVEL"))
 	if err != nil {
 		level = InfoLevel
@@ -88,8 +89,6 @@ func syncOutput(out io.Writer) error {
 
 func copyFields(src map[string]any) map[string]any {
 	dst := make(map[string]any, len(src))
-	for key, value := range src {
-		dst[key] = value
-	}
+	maps.Copy(dst, src)
 	return dst
 }

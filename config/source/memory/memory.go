@@ -6,8 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gatework/motor-core/config/source"
 	"github.com/google/uuid"
+
+	"github.com/gatework/motor-core/config/source"
 )
 
 type memory struct {

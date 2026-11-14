@@ -21,6 +21,6 @@ func (w *noopWatcher) Stop() error {
 }
 
 // NewNoopWatcher returns a watcher that blocks on Next() until Stop() is called.
-func NewNoopWatcher() (Watcher, error) {
+func NewNoopWatcher() (*noopWatcher, error) {
 	return &noopWatcher{exit: make(chan struct{})}, nil
 }

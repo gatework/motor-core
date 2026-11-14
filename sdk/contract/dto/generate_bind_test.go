@@ -2,6 +2,7 @@ package dto
 
 import (
 	"bytes"
+	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"testing"
@@ -13,7 +14,7 @@ func deleteCtx(t *testing.T, uriID, body string) *gin.Context {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c.Request = httptest.NewRequest("DELETE", "/x/"+uriID, bytes.NewBufferString(body))
+	c.Request = httptest.NewRequest(http.MethodDelete, "/x/"+uriID, bytes.NewBufferString(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = gin.Params{{Key: "id", Value: uriID}}
 	return c

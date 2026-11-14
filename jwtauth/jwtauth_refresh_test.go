@@ -1,6 +1,7 @@
 package jwtauth
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -73,7 +74,7 @@ func claimsOf(t *testing.T, mw *GinJWTMiddleware, tokenString string) jwt.MapCla
 	t.Helper()
 	parsed, err := jwt.Parse(
 		tokenString,
-		func(*jwt.Token) (interface{}, error) { return mw.Key, nil },
+		func(*jwt.Token) (any, error) { return mw.Key, nil },
 		jwt.WithoutClaimsValidation(),
 	)
 	if err != nil {
@@ -129,7 +130,7 @@ func TestRefreshTokenRejectedAfterMaxRefresh(t *testing.T) {
 	if lastErr == nil {
 		t.Fatal("token 在超出 MaxRefresh 后仍可续期 —— 上限失效，可被无限续期")
 	}
-	if lastErr != ErrExpiredToken {
+	if !errors.Is(lastErr, ErrExpiredToken) {
 		t.Errorf("期望 ErrExpiredToken，实际为 %v", lastErr)
 	}
 }

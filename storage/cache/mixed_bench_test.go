@@ -2,11 +2,12 @@ package cache_test
 
 import (
 	"context"
-	"github.com/gatework/motor-core/storage/cache"
-	"sort"
+	"slices"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/gatework/motor-core/storage/cache"
 )
 
 func BenchmarkMixedLatency(b *testing.B) {
@@ -37,7 +38,7 @@ func BenchmarkMixedLatency(b *testing.B) {
 		mu.Unlock()
 	})
 	b.StopTimer()
-	sort.Slice(samples, func(i, j int) bool { return samples[i] < samples[j] })
+	slices.Sort(samples)
 	if len(samples) > 0 {
 		b.ReportMetric(float64(samples[(len(samples)-1)*99/100]), "p99-ns")
 	}

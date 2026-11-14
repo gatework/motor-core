@@ -202,7 +202,7 @@ func testIncrIsAtomic(t *testing.T, newCache Factory) {
 	const n = 200
 	var wg sync.WaitGroup
 	wg.Add(n)
-	for i := 0; i < n; i++ {
+	for range n {
 		go func() {
 			defer wg.Done()
 			if _, err := c.Incr(ctx(), "atomic", 1); err != nil {

@@ -31,7 +31,7 @@ func benchEnforcer(b *testing.B, n int) *casbin.SyncedEnforcer {
 	}
 
 	rules := make([][]string, 0, n+1)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		rules = append(rules, []string{
 			"role" + strconv.Itoa(i%16),
 			"/api/v1/resource" + strconv.Itoa(i) + "/:id",
@@ -126,7 +126,7 @@ func sameSubjectEnforcer(tb testing.TB, n int, builtin bool) *casbin.SyncedEnfor
 	}
 
 	rules := make([][]string, 0, n+1)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		rules = append(rules, []string{"operator", "/api/v1/resource" + strconv.Itoa(i) + "/:id", "GET"})
 	}
 	rules = append(rules, []string{"operator", "/api/v1/dept", "GET"})

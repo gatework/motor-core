@@ -38,7 +38,7 @@ func TestGetRouterConcurrentStable(t *testing.T) {
 	}
 
 	// 反复调用同一实例：仍应稳定等于注册数（验证不累积）。
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		if got := len(app.Routers()); got != want {
 			t.Fatalf("repeated Routers #%d len = %d, want stable %d (accumulation bug)", i, got, want)
 		}
@@ -48,16 +48,14 @@ func TestGetRouterConcurrentStable(t *testing.T) {
 	const goroutines, iters = 16, 50
 	var wg sync.WaitGroup
 	bad := make(chan int, goroutines*iters)
-	for i := 0; i < goroutines; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := 0; j < iters; j++ {
+	for range goroutines {
+		wg.Go(func() {
+			for range iters {
 				if n := len(app.Routers()); n != want {
 					bad <- n
 				}
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	close(bad)

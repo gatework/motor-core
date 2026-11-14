@@ -2,9 +2,10 @@ package memory
 
 import (
 	"fmt"
-	"github.com/gatework/motor-core/config/source"
 	"testing"
 	"time"
+
+	"github.com/gatework/motor-core/config/source"
 )
 
 func TestWatcherStopUnblocksNext(t *testing.T) {
@@ -78,7 +79,7 @@ func TestSlowWatcherReceivesLatestState(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer w.Stop()
-	for i := 0; i < 200; i++ {
+	for i := range 200 {
 		if err := s.Write(&source.ChangeSet{Data: []byte(fmt.Sprintf(`{"key":%d}`, i)), Format: "json"}); err != nil {
 			t.Fatal(err)
 		}

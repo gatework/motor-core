@@ -122,7 +122,7 @@ func TestPermissionScopes(t *testing.T) {
 		name string
 		p    *DataPermission
 		want string
-		vars []interface{}
+		vars []any
 	}{
 		{
 			name: "all",
@@ -133,25 +133,25 @@ func TestPermissionScopes(t *testing.T) {
 			name: "custom",
 			p:    &DataPermission{DataScope: DataScopeCustom, RoleId: 3},
 			want: "SELECT * FROM `t` WHERE t.create_by in (select sys_user.user_id from sys_role_dept left join sys_user on sys_user.dept_id=sys_role_dept.dept_id where sys_role_dept.role_id = ?)",
-			vars: []interface{}{3},
+			vars: []any{3},
 		},
 		{
 			name: "dept",
 			p:    &DataPermission{DataScope: DataScopeDept, DeptId: 5},
 			want: "SELECT * FROM `t` WHERE t.create_by in (SELECT user_id from sys_user where dept_id = ? )",
-			vars: []interface{}{5},
+			vars: []any{5},
 		},
 		{
 			name: "dept-tree",
 			p:    &DataPermission{DataScope: DataScopeDeptTree, DeptId: 5},
 			want: "SELECT * FROM `t` WHERE t.create_by in (SELECT user_id from sys_user where sys_user.dept_id in(select dept_id from sys_dept where dept_path like ? ))",
-			vars: []interface{}{"%/5/%"},
+			vars: []any{"%/5/%"},
 		},
 		{
 			name: "self",
 			p:    &DataPermission{DataScope: DataScopeSelf, UserId: 7},
 			want: "SELECT * FROM `t` WHERE t.create_by = ?",
-			vars: []interface{}{7},
+			vars: []any{7},
 		},
 		// H2: an unrecognized scope must not read like "all data" any more.
 		{name: "unrecognized value", p: &DataPermission{DataScope: "6"}, want: noRows},
@@ -171,7 +171,7 @@ func TestPermissionScopes(t *testing.T) {
 			stmt := db.Session(&gorm.Session{DryRun: true}).
 				Table("t").
 				Scopes(Permission("t", tc.p, enabled)).
-				Find(&[]map[string]interface{}{}).
+				Find(&[]map[string]any{}).
 				Statement
 
 			if stmt.SQL.String() != tc.want {

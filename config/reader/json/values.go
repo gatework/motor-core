@@ -12,6 +12,7 @@ import (
 	"time"
 
 	simple "github.com/bitly/go-simplejson"
+
 	"github.com/gatework/motor-core/config/reader"
 	"github.com/gatework/motor-core/config/source"
 )
@@ -143,15 +144,15 @@ func (j *jsonValues) Bytes() []byte {
 	return b
 }
 
-func (j *jsonValues) Map() map[string]interface{} {
+func (j *jsonValues) Map() map[string]any {
 	m, _ := j.sj.Map()
 	if m == nil {
-		return map[string]interface{}{}
+		return map[string]any{}
 	}
-	return cloneValue(m).(map[string]interface{})
+	return cloneValue(m).(map[string]any)
 }
 
-func (j *jsonValues) Scan(v interface{}) error {
+func (j *jsonValues) Scan(v any) error {
 	b, err := j.sj.MarshalJSON()
 	if err != nil {
 		return err
@@ -202,7 +203,7 @@ func (j *jsonValue) Int(def int) int {
 }
 
 func (j *jsonValue) String(def string) string {
-	return j.Json.MustString(def)
+	return j.MustString(def)
 }
 
 func (j *jsonValue) Float64(def float64) float64 {
@@ -246,11 +247,11 @@ func (j *jsonValue) StringSlice(def []string) []string {
 			return sl
 		}
 	}
-	return slices.Clone(j.Json.MustStringArray(def))
+	return slices.Clone(j.MustStringArray(def))
 }
 
 func (j *jsonValue) StringMap(def map[string]string) map[string]string {
-	m, err := j.Json.Map()
+	m, err := j.Map()
 	if err != nil {
 		return def
 	}
@@ -264,8 +265,8 @@ func (j *jsonValue) StringMap(def map[string]string) map[string]string {
 	return res
 }
 
-func (j *jsonValue) Scan(v interface{}) error {
-	b, err := j.Json.MarshalJSON()
+func (j *jsonValue) Scan(v any) error {
+	b, err := j.MarshalJSON()
 	if err != nil {
 		return err
 	}
@@ -276,7 +277,7 @@ func (j *jsonValue) Bytes() []byte {
 	b, err := j.Json.Bytes()
 	if err != nil {
 		// try return marshalled
-		b, err = j.Json.MarshalJSON()
+		b, err = j.MarshalJSON()
 		if err != nil {
 			return []byte{}
 		}
@@ -286,16 +287,16 @@ func (j *jsonValue) Bytes() []byte {
 }
 
 // cloneValue copies the JSON tree; primitive JSON values are immutable.
-func cloneValue(v interface{}) interface{} {
+func cloneValue(v any) any {
 	switch v := v.(type) {
-	case map[string]interface{}:
-		m := make(map[string]interface{}, len(v))
+	case map[string]any:
+		m := make(map[string]any, len(v))
 		for key, value := range v {
 			m[key] = cloneValue(value)
 		}
 		return m
-	case []interface{}:
-		values := make([]interface{}, len(v))
+	case []any:
+		values := make([]any, len(v))
 		for i, value := range v {
 			values[i] = cloneValue(value)
 		}

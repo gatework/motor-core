@@ -1,8 +1,9 @@
 package loader
 
 import (
-	"github.com/gatework/motor-core/config/source"
 	"testing"
+
+	"github.com/gatework/motor-core/config/source"
 )
 
 func TestCopyOwnsChangeSetData(t *testing.T) {

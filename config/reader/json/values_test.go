@@ -12,8 +12,8 @@ func TestValues(t *testing.T) {
 	testData := []struct {
 		csdata   []byte
 		path     []string
-		accepter interface{}
-		value    interface{}
+		accepter any
+		value    any
 	}{
 		{
 			[]byte(`{"foo": "bar", "baz": {"bar": "cat"}}`),
@@ -90,7 +90,7 @@ func TestValuesOwnTheirJSONTree(t *testing.T) {
 		t.Fatal(err)
 	}
 	view := values.Map()
-	view["nested"].(map[string]interface{})["name"] = "changed"
+	view["nested"].(map[string]any)["name"] = "changed"
 	if got := values.Get("nested", "name").String(""); got != "original" {
 		t.Fatalf("Map exposed the tree: %q", got)
 	}

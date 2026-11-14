@@ -32,14 +32,14 @@ func TestResolveSearchQuery(t *testing.T) {
 	// Only pass t into top-level Convey calls
 	Convey("Given some integer with a starting value", t, func() {
 		d := ApplicationQuery{
-			Id:               "aaa",
-			Domain:           "bbb",
-			Version:          "ccc",
-			Status:           []int{1, 2},
-			Start:            time.Now().Add(-8 * time.Hour),
-			End:              time.Now(),
-			ApplicationOrder: ApplicationOrder{IdOrder: "desc"},
-			TestJoin:         TestJoin{PaymentAccount: "1212"},
+			Id:             "aaa",
+			Domain:         "bbb",
+			Version:        "ccc",
+			Status:         []int{1, 2},
+			Start:          time.Now().Add(-8 * time.Hour),
+			End:            time.Now(),
+			IdOrder:        "desc",
+			PaymentAccount: "1212",
 		}
 		condition := mustResolve("mysql", d)
 		fmt.Println(condition)
@@ -73,7 +73,7 @@ func TestJsonContains_MySQLSQLCorrectness(t *testing.T) {
 		expected := "JSON_CONTAINS(`tool_script_templates`.`agent_codes`, JSON_QUOTE(?))"
 		_, exist := cond.Where[expected]
 		So(exist, ShouldBeTrue)
-		So(cond.Where[expected], ShouldResemble, []interface{}{"ai-coder"})
+		So(cond.Where[expected], ShouldResemble, []any{"ai-coder"})
 	})
 
 	Convey("MySQL 分支：json_contains_or_null 生成三态 SQL", t, func() {
@@ -85,7 +85,7 @@ func TestJsonContains_MySQLSQLCorrectness(t *testing.T) {
 			"JSON_CONTAINS(`tool_script_templates`.`agent_codes`, JSON_QUOTE(?)))"
 		_, exist := cond.Where[expected]
 		So(exist, ShouldBeTrue)
-		So(cond.Where[expected], ShouldResemble, []interface{}{"ai-reviewer"})
+		So(cond.Where[expected], ShouldResemble, []any{"ai-reviewer"})
 	})
 }
 
@@ -98,7 +98,7 @@ func TestJsonContains_PostgresSQLCorrectness(t *testing.T) {
 		args, exist := cond.Where[expected]
 		So(exist, ShouldBeTrue)
 		// 标量字符串 → JSON 字面量 "ai-coder"
-		So(args, ShouldResemble, []interface{}{`"ai-coder"`})
+		So(args, ShouldResemble, []any{`"ai-coder"`})
 	})
 
 	Convey("Postgres 分支：json_contains_or_null 生成三态 SQL", t, func() {
@@ -110,7 +110,7 @@ func TestJsonContains_PostgresSQLCorrectness(t *testing.T) {
 			"tool_script_templates.agent_codes @> ?::jsonb)"
 		args, exist := cond.Where[expected]
 		So(exist, ShouldBeTrue)
-		So(args, ShouldResemble, []interface{}{`"ai-reviewer"`})
+		So(args, ShouldResemble, []any{`"ai-reviewer"`})
 	})
 }
 
@@ -143,35 +143,35 @@ func TestJsonContains_BuildClauseHelpers(t *testing.T) {
 		sql, args, err := BuildJSONContainsClause(MySQL, "agent_codes", "ai-coder")
 		So(err, ShouldBeNil)
 		So(sql, ShouldEqual, "JSON_CONTAINS(agent_codes, JSON_QUOTE(?))")
-		So(args, ShouldResemble, []interface{}{"ai-coder"})
+		So(args, ShouldResemble, []any{"ai-coder"})
 	})
 
 	Convey("BuildJSONContainsClause Postgres", t, func() {
 		sql, args, err := BuildJSONContainsClause(Postgres, "agent_codes", "ai-coder")
 		So(err, ShouldBeNil)
 		So(sql, ShouldEqual, "agent_codes @> ?::jsonb")
-		So(args, ShouldResemble, []interface{}{`"ai-coder"`})
+		So(args, ShouldResemble, []any{`"ai-coder"`})
 	})
 
 	Convey("BuildJSONContainsOrNullClause MySQL（白名单三态）", t, func() {
 		sql, args, err := BuildJSONContainsOrNullClause(MySQL, "agent_codes", "ai-coder")
 		So(err, ShouldBeNil)
 		So(sql, ShouldEqual, "(agent_codes IS NULL OR agent_codes = JSON_ARRAY() OR JSON_CONTAINS(agent_codes, JSON_QUOTE(?)))")
-		So(args, ShouldResemble, []interface{}{"ai-coder"})
+		So(args, ShouldResemble, []any{"ai-coder"})
 	})
 
 	Convey("BuildJSONContainsOrNullClause Postgres（白名单三态）", t, func() {
 		sql, args, err := BuildJSONContainsOrNullClause(Postgres, "agent_codes", "ai-coder")
 		So(err, ShouldBeNil)
 		So(sql, ShouldEqual, "(agent_codes IS NULL OR agent_codes = '[]'::jsonb OR agent_codes @> ?::jsonb)")
-		So(args, ShouldResemble, []interface{}{`"ai-coder"`})
+		So(args, ShouldResemble, []any{`"ai-coder"`})
 	})
 
 	Convey("BuildJSONContainsOrNullClause 支持表前缀（如 t.agent_codes）", t, func() {
 		sql, args, err := BuildJSONContainsOrNullClause(MySQL, "t.agent_codes", "ai-coder")
 		So(err, ShouldBeNil)
 		So(sql, ShouldEqual, "(t.agent_codes IS NULL OR t.agent_codes = JSON_ARRAY() OR JSON_CONTAINS(t.agent_codes, JSON_QUOTE(?)))")
-		So(args, ShouldResemble, []interface{}{"ai-coder"})
+		So(args, ShouldResemble, []any{"ai-coder"})
 	})
 
 	Convey("默认驱动（空字符串）走 MySQL 语法", t, func() {

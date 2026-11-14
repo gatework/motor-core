@@ -10,7 +10,7 @@ type Response struct {
 
 type response struct {
 	Response
-	Data interface{} `json:"data"`
+	Data any `json:"data"`
 }
 
 type Page struct {
@@ -21,10 +21,10 @@ type Page struct {
 
 type page struct {
 	Page
-	List interface{} `json:"list"`
+	List any `json:"list"`
 }
 
-func (e *response) SetData(data interface{}) {
+func (e *response) SetData(data any) {
 	e.Data = data
 }
 

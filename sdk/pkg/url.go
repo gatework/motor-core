@@ -18,7 +18,7 @@ type Ids struct {
 func IdsStrToIdsIntGroupStr(keys string) []int {
 	IDS := make([]int, 0)
 	ids := strings.Split(keys, ",")
-	for i := 0; i < len(ids); i++ {
+	for i := range ids {
 		ID, _ := StringToInt(ids[i])
 		IDS = append(IDS, ID)
 	}

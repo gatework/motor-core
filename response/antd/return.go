@@ -1,9 +1,11 @@
 package antd
 
 import (
-	"github.com/gin-gonic/gin"
-	"github.com/gatework/motor-core/sdk/pkg"
 	"net/http"
+
+	"github.com/gin-gonic/gin"
+
+	"github.com/gatework/motor-core/sdk/pkg"
 )
 
 // Error 失败数据处理
@@ -24,7 +26,7 @@ func Error(c *gin.Context, errCode string, errMsg string, showType string) {
 }
 
 // OK 通常成功数据处理
-func OK(c *gin.Context, data interface{}) {
+func OK(c *gin.Context, data any) {
 	var res response
 	res.Data = data
 	res.Success = true
@@ -35,7 +37,7 @@ func OK(c *gin.Context, data interface{}) {
 	c.AbortWithStatusJSON(http.StatusOK, res)
 }
 
-func UpFileOK(c *gin.Context, data interface{}) {
+func UpFileOK(c *gin.Context, data any) {
 	var res response
 	res.Data = data
 	res.Success = true
@@ -47,7 +49,7 @@ func UpFileOK(c *gin.Context, data interface{}) {
 }
 
 // PageOK 分页数据处理
-func PageOK(c *gin.Context, result interface{}, total int, current int, pageSize int) {
+func PageOK(c *gin.Context, result any, total int, current int, pageSize int) {
 	var res pages
 	res.Data = result
 	res.Total = total
@@ -60,7 +62,7 @@ func PageOK(c *gin.Context, result interface{}, total int, current int, pageSize
 	c.AbortWithStatusJSON(http.StatusOK, res)
 }
 
-func ListOK(c *gin.Context, result interface{}, total int, current int, pageSize int) {
+func ListOK(c *gin.Context, result any, total int, current int, pageSize int) {
 	var res lists
 	res.ListData.List = result
 	res.ListData.Total = total

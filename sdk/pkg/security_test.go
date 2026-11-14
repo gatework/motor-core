@@ -61,7 +61,7 @@ func TestGeneratedKeysHaveTheirLengthAndCharset(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			for i := 0; i < 200; i++ {
+			for range 200 {
 				got := c.gen()
 				if len(got) != c.length {
 					t.Fatalf("length %d, want %d", len(got), c.length)
@@ -82,7 +82,7 @@ func TestGeneratedKeysDiffer(t *testing.T) {
 	const runs = 500
 
 	seen := make(map[string]struct{}, runs)
-	for i := 0; i < runs; i++ {
+	for range runs {
 		seen[GenerateRandomKey16()] = struct{}{}
 	}
 	if len(seen) != runs {
@@ -95,7 +95,7 @@ func TestGeneratedKeysDiffer(t *testing.T) {
 // What must not happen is the value being constant.
 func TestTheShortKeyIsNotConstant(t *testing.T) {
 	first := GenerateRandomKey6()
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		if GenerateRandomKey6() != first {
 			return
 		}

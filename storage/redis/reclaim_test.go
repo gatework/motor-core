@@ -6,8 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gatework/motor-core/storage"
 	goredis "github.com/redis/go-redis/v9"
+
+	"github.com/gatework/motor-core/storage"
 )
 
 type pendingPageClient struct {

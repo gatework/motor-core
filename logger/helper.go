@@ -58,7 +58,7 @@ func (h *Helper) Fatalf(format string, args ...any) {
 	h.printf(FatalLevel, format, args...)
 	os.Exit(1)
 }
-func (h *Helper) WithError(err error) *Helper { return NewHelper(h.Logger.With(FieldError(err))) }
+func (h *Helper) WithError(err error) *Helper { return NewHelper(h.With(FieldError(err))) }
 func (h *Helper) WithFields(fields map[string]any) *Helper {
-	return NewHelper(h.Logger.With(FieldsFromMap(fields)...))
+	return NewHelper(h.With(FieldsFromMap(fields)...))
 }

@@ -69,7 +69,7 @@ func compileKeyMatch2(pattern string) (*regexp.Regexp, error) {
 		return v.(*regexp.Regexp), nil
 	}
 
-	expr := strings.Replace(pattern, "/*", "/.*", -1)
+	expr := strings.ReplaceAll(pattern, "/*", "/.*")
 	expr = keyMatch2Param.ReplaceAllString(expr, "$1[^/]+$2")
 	re, err := regexp.Compile("^" + expr + "$")
 	if err != nil {
@@ -89,7 +89,7 @@ func compileKeyMatch2(pattern string) (*regexp.Regexp, error) {
 }
 
 // keyMatch2Func adapts keyMatch2 to the signature casbin's evaluator expects.
-func keyMatch2Func(args ...interface{}) (interface{}, error) {
+func keyMatch2Func(args ...any) (any, error) {
 	if len(args) != 2 {
 		return false, errKeyMatch2Args
 	}

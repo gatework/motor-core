@@ -12,6 +12,7 @@ package migration
 
 import (
 	"fmt"
+	"maps"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -136,9 +137,7 @@ func (r *Registry) Snapshot() map[string]Entry {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	out := make(map[string]Entry, len(r.entries))
-	for k, v := range r.entries {
-		out[k] = v
-	}
+	maps.Copy(out, r.entries)
 	return out
 }
 

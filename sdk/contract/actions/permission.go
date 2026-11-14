@@ -133,7 +133,7 @@ func permissionFromClaims(c *gin.Context) (*DataPermission, bool) {
 	}, true
 }
 
-func newDataPermission(tx *gorm.DB, userId interface{}) (*DataPermission, error) {
+func newDataPermission(tx *gorm.DB, userId any) (*DataPermission, error) {
 	var err error
 	p := &DataPermission{}
 

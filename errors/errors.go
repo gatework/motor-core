@@ -3,7 +3,9 @@
 package errors
 
 import (
+	"errors"
 	"fmt"
+
 	json "github.com/json-iterator/go"
 )
 
@@ -46,15 +48,17 @@ func Parse(errStr string) *Error {
 
 // Equal tries to compare errors
 func Equal(err1 error, err2 error) bool {
-	verr1, ok1 := err1.(*Error)
-	verr2, ok2 := err2.(*Error)
+	verr1 := &Error{}
+	ok1 := errors.As(err1, &verr1)
+	verr2 := &Error{}
+	ok2 := errors.As(err2, &verr2)
 
 	if ok1 != ok2 {
 		return false
 	}
 
 	if !ok1 {
-		return err1 == err2
+		return errors.Is(err1, err2)
 	}
 
 	if verr1.ErrorCode != verr2.ErrorCode {
@@ -66,7 +70,8 @@ func Equal(err1 error, err2 error) bool {
 
 // FromError try to convert go error to *Error
 func FromError(err error) *Error {
-	if verr, ok := err.(*Error); ok && verr != nil {
+	verr := &Error{}
+	if errors.As(err, &verr) {
 		return verr
 	}
 

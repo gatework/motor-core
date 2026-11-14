@@ -20,8 +20,8 @@ type Values interface {
 	Get(path ...string) Value
 	Set(val any, path ...string) error
 	Del(path ...string)
-	Map() map[string]interface{}
-	Scan(v interface{}) error
+	Map() map[string]any
+	Scan(v any) error
 }
 
 // Value represents a value of any type
@@ -33,6 +33,6 @@ type Value interface {
 	Duration(def time.Duration) time.Duration
 	StringSlice(def []string) []string
 	StringMap(def map[string]string) map[string]string
-	Scan(val interface{}) error
+	Scan(val any) error
 	Bytes() []byte
 }

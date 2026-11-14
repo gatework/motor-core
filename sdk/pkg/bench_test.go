@@ -41,7 +41,7 @@ func BenchmarkRequestIDExisting(b *testing.B) {
 
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = RequestID(c)
 	}
 }
@@ -52,7 +52,7 @@ func BenchmarkGetORM(b *testing.B) {
 
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		if _, err := GetORM(c); err != nil {
 			b.Fatal(err)
 		}
@@ -67,7 +67,7 @@ func BenchmarkGetORMMissing(b *testing.B) {
 
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		if _, err := GetORM(c); err == nil {
 			b.Fatal("expected an error")
 		}

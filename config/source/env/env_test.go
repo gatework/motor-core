@@ -2,6 +2,7 @@ package env
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -21,8 +22,8 @@ func unsetEnvVars(vars map[string]string) {
 	}
 }
 
-func unmarshalData(data []byte) (map[string]interface{}, error) {
-	var result map[string]interface{}
+func unmarshalData(data []byte) (map[string]any, error) {
+	var result map[string]any
 	err := json.Unmarshal(data, &result)
 	return result, err
 }
@@ -56,7 +57,7 @@ func TestEnv_Read(t *testing.T) {
 		t.Error(err)
 	}
 
-	actualDB := actual["database"].(map[string]interface{})
+	actualDB := actual["database"].(map[string]any)
 
 	for k, v := range expected["database"] {
 		a := actualDB[k]
@@ -125,12 +126,12 @@ func TestEnvvar_WatchNextNoOpsUntilStop(t *testing.T) {
 		w.Stop()
 	}()
 
-	if _, err := w.Next(); err != source.ErrWatcherStopped {
+	if _, err := w.Next(); !errors.Is(err, source.ErrWatcherStopped) {
 		t.Errorf("expected watcher stopped error, got %v", err)
 	}
 }
 
-func containsKey(m map[string]interface{}, s string) bool {
+func containsKey(m map[string]any, s string) bool {
 	for k := range m {
 		if k == s {
 			return true

@@ -275,7 +275,7 @@ func (w *Watcher) run(ctx context.Context) {
 			return
 		}
 		if err := w.apply(ctx, snapshot); err != nil && ctx.Err() == nil {
-			slog.Error("config: rejected reload", "error", err)
+			slog.ErrorContext(ctx, "config: rejected reload", "error", err)
 		}
 	}
 }

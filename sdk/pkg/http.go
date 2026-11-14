@@ -90,7 +90,7 @@ func effectiveTimeout(d time.Duration) time.Duration {
 // data：        POST请求提交的数据
 // contentType： 请求体格式，如：application/json
 // content：     请求放回的内容
-func Post(url string, data interface{}, contentType string) ([]byte, error) {
+func Post(url string, data any, contentType string) ([]byte, error) {
 
 	// 超时时间：5秒
 	client := &http.Client{Timeout: 5 * time.Second}

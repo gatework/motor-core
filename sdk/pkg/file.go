@@ -69,7 +69,7 @@ func (h ReplaceHelper) walkCallback(path string, f os.FileInfo, err error) error
 	log.Printf("h.NewText: %s \n", h.NewText)
 
 	//替换
-	newContent := strings.Replace(content, h.OldText, h.NewText, -1)
+	newContent := strings.ReplaceAll(content, h.OldText, h.NewText)
 
 	//重新写入
 	err = os.WriteFile(path, []byte(newContent), 0)
@@ -97,10 +97,8 @@ func FileMonitoringById(ctx context.Context, filePth string, id string, group st
 	if err != nil {
 		return
 	}
-	for {
-		if ctx.Err() != nil {
-			break
-		}
+	for ctx.Err() == nil {
+
 		line, err := rd.ReadBytes('\n')
 		// 如果是文件末尾不返回
 		if err == io.EOF {
@@ -133,5 +131,5 @@ func GetCurrentPath() string {
 	if err != nil {
 		fmt.Println(err)
 	}
-	return strings.Replace(dir, "\\", "/", -1)
+	return strings.ReplaceAll(dir, "\\", "/")
 }

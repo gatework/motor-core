@@ -38,7 +38,7 @@ func NewZapLogger(opts ...Option) (*Zap, error) {
 		EncodeLevel: zapcore.LowercaseLevelEncoder, EncodeTime: zapcore.ISO8601TimeEncoder,
 		EncodeDuration: zapcore.SecondsDurationEncoder, EncodeCaller: zapcore.ShortCallerEncoder,
 	}
-	var encoder zapcore.Encoder = zapcore.NewJSONEncoder(config)
+	var encoder = zapcore.NewJSONEncoder(config)
 	if options.Stdout || options.Encoder == "console" || options.Encoder == "text" {
 		config.EncodeLevel = zapcore.CapitalColorLevelEncoder
 		encoder = zapcore.NewConsoleEncoder(config)

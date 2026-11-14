@@ -8,12 +8,13 @@ import (
 	"sync/atomic"
 
 	"github.com/casbin/casbin/v3"
-	"github.com/gatework/motor-core/logger"
-	"github.com/gatework/motor-core/storage"
-	"github.com/gatework/motor-core/storage/queue"
 	"github.com/gin-gonic/gin"
 	"github.com/robfig/cron/v3"
 	"gorm.io/gorm"
+
+	"github.com/gatework/motor-core/logger"
+	"github.com/gatework/motor-core/storage"
+	"github.com/gatework/motor-core/storage/queue"
 )
 
 const DefaultTenant = "default"

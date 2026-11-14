@@ -7,11 +7,11 @@ import (
 
 // api结构体
 type APIException struct {
-	Code      int         `json:"code"`
-	Success   bool        `json:"success"`
-	Msg       string      `json:"msg"`
-	Timestamp int64       `json:"timestamp"`
-	Result    interface{} `json:"result"`
+	Code      int    `json:"code"`
+	Success   bool   `json:"success"`
+	Msg       string `json:"msg"`
+	Timestamp int64  `json:"timestamp"`
+	Result    any    `json:"result"`
 }
 
 // 实现接口
@@ -19,7 +19,7 @@ func (e *APIException) Error() string {
 	return e.Msg
 }
 
-func newAPIException(code int, msg string, data interface{}, success bool) *APIException {
+func newAPIException(code int, msg string, data any, success bool) *APIException {
 	return &APIException{
 		Code:      code,
 		Success:   success,
@@ -55,6 +55,6 @@ func AuthError(message string) *APIException {
 }
 
 // 200
-func ResponseJson(message string, data interface{}, success bool) *APIException {
+func ResponseJson(message string, data any, success bool) *APIException {
 	return newAPIException(http.StatusOK, message, data, success)
 }

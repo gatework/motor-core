@@ -2,6 +2,7 @@ package user
 
 import (
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -13,7 +14,7 @@ import (
 func contextWith(claims jwt.MapClaims) *gin.Context {
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c.Request = httptest.NewRequest("GET", "/", nil)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
 	c.Set(jwt.JwtPayloadKey, claims)
 	return c
 }

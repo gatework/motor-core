@@ -56,7 +56,7 @@ func (p *reloadProbe) OnChange() {
 	if c != nil {
 		// All three read entry points, because all three take RLock.
 		_ = c.Map()
-		var dst map[string]interface{}
+		var dst map[string]any
 		_ = c.Scan(&dst)
 		signal2(p.observed, c.Get("key").String(""))
 	}

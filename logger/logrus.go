@@ -201,12 +201,12 @@ func (h *SentryHook) Fire(entry *logrus.Entry) error {
 
 // ElasticsearchHook Elasticsearch 日志存储 Hook
 type ElasticsearchHook struct {
-	client interface{} // Elasticsearch client
+	client any // Elasticsearch client
 	index  string
 	levels []logrus.Level
 }
 
-func NewElasticsearchHook(client interface{}, index string) *ElasticsearchHook {
+func NewElasticsearchHook(client any, index string) *ElasticsearchHook {
 	return &ElasticsearchHook{
 		client: client,
 		index:  index,

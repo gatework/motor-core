@@ -4,8 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/gatework/motor-core/storage"
 	"github.com/mojocn/base64Captcha"
+
+	"github.com/gatework/motor-core/storage"
 )
 
 type cacheStore struct {

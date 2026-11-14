@@ -147,7 +147,7 @@ func TestConfigWatcherDirtyOverrite(t *testing.T) {
 
 	ss := make([]source.Source, l)
 
-	for i := 0; i < l; i++ {
+	for i := range l {
 		ss[i] = memory.NewSource(memory.WithJSON([]byte(fmt.Sprintf(`{"key%d": "val%d"}`, i, i))))
 	}
 

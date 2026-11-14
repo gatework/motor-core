@@ -53,8 +53,8 @@ func planMapping(typ reflect.Type, tag string) mappingPlan {
 		active[t] = true
 		defer delete(active, t)
 		var plan mappingPlan
-		for i := 0; i < t.NumField(); i++ {
-			field := t.Field(i)
+		for field := range t.Fields() {
+			field := field
 			if field.PkgPath != "" && !field.Anonymous {
 				continue
 			}

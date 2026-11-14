@@ -10,8 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gatework/motor-core/logger"
 	"gorm.io/gorm"
+
+	"github.com/gatework/motor-core/logger"
 )
 
 // Cleanup unwinds: the callback registered last is the one most likely to
@@ -44,7 +45,7 @@ func TestShutdownCallbacksAreGivenTheContext(t *testing.T) {
 	defer cancel()
 
 	var got context.Context
-	app.SetShutdown(func(c context.Context) { got = c })
+	app.SetShutdown(func(c context.Context) { got := c })
 
 	if err := app.RunShutdown(ctx); err != nil {
 		t.Fatalf("RunShutdown returned %v, want nil", err)
@@ -67,7 +68,7 @@ func TestRunShutdownTwiceDoesNotRunCleanupTwice(t *testing.T) {
 	calls := 0
 	app.SetShutdown(func(context.Context) { calls++ })
 
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		if err := app.RunShutdown(context.Background()); err != nil {
 			t.Fatalf("RunShutdown returned %v, want nil", err)
 		}
@@ -84,7 +85,7 @@ func TestConcurrentRunShutdownRunsTheCleanupOnce(t *testing.T) {
 
 	var mu sync.Mutex
 	calls := 0
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		app.SetShutdown(func(context.Context) {
 			mu.Lock()
 			defer mu.Unlock()
@@ -93,12 +94,10 @@ func TestConcurrentRunShutdownRunsTheCleanupOnce(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
-	for i := 0; i < 8; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 8 {
+		wg.Go(func() {
 			_ = app.RunShutdown(context.Background())
-		}()
+		})
 	}
 	wg.Wait()
 

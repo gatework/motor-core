@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"dario.cat/mergo"
+
 	"github.com/gatework/motor-core/config/source"
 )
 
@@ -21,7 +22,7 @@ type env struct {
 }
 
 func (e *env) Read() (*source.ChangeSet, error) {
-	var changes map[string]interface{}
+	var changes map[string]any
 
 	for _, env := range os.Environ() {
 		env = e.processEnv(env)
@@ -34,7 +35,7 @@ func (e *env) Read() (*source.ChangeSet, error) {
 		keys := strings.Split(strings.ToLower(pair[0]), "_")
 		reverse(keys)
 
-		tmp := make(map[string]interface{})
+		tmp := make(map[string]any)
 		for i, k := range keys {
 			if i == 0 {
 				if intValue, err := strconv.Atoi(value); err == nil {
@@ -47,7 +48,7 @@ func (e *env) Read() (*source.ChangeSet, error) {
 				continue
 			}
 
-			tmp = map[string]interface{}{k: tmp}
+			tmp = map[string]any{k: tmp}
 		}
 
 		if err := mergo.Map(&changes, tmp); err != nil {

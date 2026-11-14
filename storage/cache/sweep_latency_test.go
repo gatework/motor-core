@@ -44,7 +44,7 @@ func TestSweepDoesNotStallReaders(t *testing.T) {
 	m := New(Options{SweepInterval: 0})
 	defer func() { _ = m.Close() }()
 
-	for i := 0; i < sweepLatencyEntries; i++ {
+	for i := range sweepLatencyEntries {
 		if err := m.Set(ctx, "k"+strconv.Itoa(i), "v", time.Hour); err != nil {
 			t.Fatal(err)
 		}
@@ -112,7 +112,7 @@ func TestSweepReclaimsEveryShard(t *testing.T) {
 	defer func() { _ = m.Close() }()
 
 	const n = 20000
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if err := m.Set(ctx, "k"+strconv.Itoa(i), "v", time.Millisecond); err != nil {
 			t.Fatal(err)
 		}

@@ -110,9 +110,7 @@ func TestRegistrationAndBroadcastHaveOneQueueOwner(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := range 8 {
 		conn, _ := dialedConnection(t)
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			id := strconv.Itoa(i)
 			if err := m.Connect(t.Context(), id, "group", conn); err != nil {
 				t.Error(err)
@@ -127,7 +125,7 @@ func TestRegistrationAndBroadcastHaveOneQueueOwner(t *testing.T) {
 			if err := m.Disconnect(t.Context(), id, "group"); err != nil {
 				t.Error(err)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	if err := m.Shutdown(t.Context()); err != nil {

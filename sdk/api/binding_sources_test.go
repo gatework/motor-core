@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -18,7 +20,7 @@ func requestAPI(t testing.TB, target, contentType, body string) *API {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	c.Request = httptest.NewRequest("PUT", target, strings.NewReader(body))
+	c.Request = httptest.NewRequest(http.MethodPut, target, strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", contentType)
 	c.Params = gin.Params{{Key: "id", Value: "7"}}
 	a, err := New(c, Dependencies{})
@@ -102,7 +104,7 @@ func TestBindRejectsInvalidTargetAndCanceledRequest(t *testing.T) {
 	ctx, cancel := context.WithCancel(a.Context.Request.Context())
 	cancel()
 	a.Context.Request = a.Context.Request.WithContext(ctx)
-	if err := a.Bind(&struct{}{}); err != context.Canceled {
+	if err := a.Bind(&struct{}{}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("error=%v", err)
 	}
 }

@@ -56,7 +56,7 @@ func TestCloseDeliversWhatIsStillBuffered(t *testing.T) {
 	q, delivered := startedQueue(t, 64)
 
 	const buffered = 20
-	for i := 0; i < buffered; i++ {
+	for i := range buffered {
 		if err := q.Publish(context.Background(), storage.Message{Topic: "t"}); err != nil {
 			t.Fatalf("publish %d: %v", i, err)
 		}
@@ -80,7 +80,7 @@ func TestCloseDeliversWhatIsStillBuffered(t *testing.T) {
 func TestCloseWaitsForTheDrainRatherThanForInFlightAlone(t *testing.T) {
 	q, delivered := startedQueue(t, 64)
 
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		if err := q.Publish(context.Background(), storage.Message{Topic: "t"}); err != nil {
 			t.Fatalf("publish %d: %v", i, err)
 		}

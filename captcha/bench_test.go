@@ -28,7 +28,7 @@ func BenchmarkDriverDigitGenerate(b *testing.B) {
 
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		if _, _, _, err := DriverDigitFunc(); err != nil {
 			b.Fatal(err)
 		}
@@ -42,7 +42,7 @@ func BenchmarkDriverStringGenerate(b *testing.B) {
 
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		if _, _, _, err := DriverStringFunc(); err != nil {
 			b.Fatal(err)
 		}
@@ -83,7 +83,7 @@ func BenchmarkVerify(b *testing.B) {
 
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		if !Verify("bench-id", "1234", false) {
 			b.Fatal("verification failed")
 		}

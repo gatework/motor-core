@@ -2,6 +2,7 @@ package captcha
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -43,7 +44,7 @@ func TestCacheStoreExpiryAndCancellation(t *testing.T) {
 		t.Fatal("an expired captcha verified")
 	}
 	cancel()
-	if err := store.Set("cancelled", "1234"); err != context.Canceled {
+	if err := store.Set("cancelled", "1234"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Set after cancellation: %v", err)
 	}
 	if store.Verify("cancelled", "1234", false) {

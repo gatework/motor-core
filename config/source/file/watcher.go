@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/fsnotify/fsnotify"
+
 	"github.com/gatework/motor-core/config/source"
 )
 

@@ -28,7 +28,7 @@ func Error(c *gin.Context, code int, err error, msg string) {
 }
 
 // OK 通常成功数据处理
-func OK(c *gin.Context, data interface{}, msg string) {
+func OK(c *gin.Context, data any, msg string) {
 	res := Default.Clone()
 	res.SetData(data)
 	res.SetSuccess(true)
@@ -43,7 +43,7 @@ func OK(c *gin.Context, data interface{}, msg string) {
 }
 
 // PageOK 分页数据处理
-func PageOK(c *gin.Context, result interface{}, count int, pageIndex int, pageSize int, msg string) {
+func PageOK(c *gin.Context, result any, count int, pageIndex int, pageSize int, msg string) {
 	var res page
 	res.List = result
 	res.Count = count

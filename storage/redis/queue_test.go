@@ -131,7 +131,7 @@ func TestRetriesUntilMaxAttemptsThenLeavesPending(t *testing.T) {
 }
 
 // roundTrip publishes one message and returns it as the handler saw it.
-func roundTrip(t *testing.T, url string, values map[string]interface{}) storage.Message {
+func roundTrip(t *testing.T, url string, values map[string]any) storage.Message {
 	t.Helper()
 
 	q, err := redisstore.OpenQueue(context.Background(), redisOptions(t, url), redisstore.QueueOptions{
@@ -174,7 +174,7 @@ func TestValuesTravelAsJSON(t *testing.T) {
 	url := redisURL(t)
 	flush(t, adminClient(t, url))
 
-	m := roundTrip(t, url, map[string]interface{}{
+	m := roundTrip(t, url, map[string]any{
 		"id":    "42",
 		"count": 7,
 		"retry": true,
@@ -197,7 +197,7 @@ func TestReservedFieldNameIsNotSwallowed(t *testing.T) {
 	url := redisURL(t)
 	flush(t, adminClient(t, url))
 
-	m := roundTrip(t, url, map[string]interface{}{"go-admin:empty": "mine"})
+	m := roundTrip(t, url, map[string]any{"go-admin:empty": "mine"})
 
 	if m.Values["go-admin:empty"] != "mine" {
 		t.Errorf("the caller's field was lost, got %#v", m.Values)

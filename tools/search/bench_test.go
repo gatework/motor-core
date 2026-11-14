@@ -34,41 +34,41 @@ type benchSearchDTO struct {
 	Ignored   string    `search:"-"`
 }
 
-func benchResolve(b *testing.B, q interface{}) {
+func benchResolve(b *testing.B, q any) {
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_, _ = Resolve(MySQL, q)
 	}
 }
 
 // BenchmarkResolveEmpty is a list page opened with no filters.
 func BenchmarkResolveEmpty(b *testing.B) {
-	benchResolve(b, benchSearchDTO{BenchPagination: BenchPagination{PageIndex: 1, PageSize: 10}})
+	benchResolve(b, benchSearchDTO{PageIndex: 1, PageSize: 10})
 }
 
 // BenchmarkResolveTypical is a search with two filters filled in.
 func BenchmarkResolveTypical(b *testing.B) {
 	benchResolve(b, benchSearchDTO{
-		BenchPagination: BenchPagination{PageIndex: 1, PageSize: 10},
-		Username:        "admin",
-		Status:          "2",
+		PageIndex: 1, PageSize: 10,
+		Username: "admin",
+		Status:   "2",
 	})
 }
 
 // BenchmarkResolveFull fills everything, which is the upper bound.
 func BenchmarkResolveFull(b *testing.B) {
 	benchResolve(b, benchSearchDTO{
-		BenchPagination: BenchPagination{PageIndex: 1, PageSize: 10},
-		Username:        "admin",
-		NickName:        "administrator",
-		Phone:           "13800000000",
-		Email:           "a@b.c",
-		Status:          "2",
-		DeptId:          "1",
-		RoleId:          "1",
-		BeginTime:       time.Now().Add(-24 * time.Hour),
-		EndTime:         time.Now(),
-		Order:           "desc",
+		PageIndex: 1, PageSize: 10,
+		Username:  "admin",
+		NickName:  "administrator",
+		Phone:     "13800000000",
+		Email:     "a@b.c",
+		Status:    "2",
+		DeptId:    "1",
+		RoleId:    "1",
+		BeginTime: time.Now().Add(-24 * time.Hour),
+		EndTime:   time.Now(),
+		Order:     "desc",
 	})
 }

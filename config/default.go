@@ -7,12 +7,13 @@ import (
 	"sync"
 	"time"
 
+	"log/slog"
+
 	"github.com/gatework/motor-core/config/loader"
 	"github.com/gatework/motor-core/config/loader/memory"
 	"github.com/gatework/motor-core/config/reader"
 	"github.com/gatework/motor-core/config/reader/json"
 	"github.com/gatework/motor-core/config/source"
-	"log/slog"
 )
 
 // Config owns the current configuration snapshot and its reload watcher.
@@ -203,13 +204,13 @@ func (c *Config) apply(snap *loader.Snapshot, notify bool) error {
 	return nil
 }
 
-func (c *Config) Map() map[string]interface{} {
+func (c *Config) Map() map[string]any {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.vals.Map()
 }
 
-func (c *Config) Scan(v interface{}) error {
+func (c *Config) Scan(v any) error {
 	// User-defined UnmarshalJSON methods run without holding manager locks.
 	return c.Get().Scan(v)
 }

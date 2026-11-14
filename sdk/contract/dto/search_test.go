@@ -68,7 +68,7 @@ type icontainsProbe struct {
 	Name string `search:"type:icontains;column:name;table:probe"`
 }
 
-func statementSQL(t *testing.T, db *gorm.DB, q interface{}) string {
+func statementSQL(t *testing.T, db *gorm.DB, q any) string {
 	t.Helper()
 	tx := db.Session(&gorm.Session{DryRun: true}).Table("probe").Scopes(MakeCondition(q)).Find(&[]searchProbe{})
 	if tx.Error != nil {
