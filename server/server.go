@@ -67,10 +67,22 @@ func (s *Server) Run(ctx context.Context) error {
 	timeout := s.opts.gracefulShutdownTimeout
 	s.mu.Unlock()
 	var runs, shutdowns sync.WaitGroup
+	allCompleted := false
+	release := func() {
+		runs.Wait()
+		shutdowns.Wait()
+		s.mu.Lock()
+		s.isRunning = false
+		s.mu.Unlock()
+	}
 	defer func() {
-		// A timeout ends the caller's wait, not arbitrary user code. Do not allow
-		// another run until every previously owned task has actually returned.
-		go func() { runs.Wait(); shutdowns.Wait(); s.mu.Lock(); s.isRunning = false; s.mu.Unlock() }()
+		if allCompleted {
+			release()
+			return
+		}
+		// A timeout bounds the wait, not user code. Keep the run reserved until
+		// its remaining tasks have actually returned.
+		go release()
 	}()
 	results := make(chan serviceResult, len(services)*2)
 	cancels := make([]context.CancelFunc, len(services))
@@ -101,6 +113,7 @@ running:
 		}
 	}
 	if pending == 0 {
+		allCompleted = true
 		return result
 	}
 	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
@@ -130,5 +143,6 @@ running:
 			return errors.Join(result, fmt.Errorf("server: shutdown: %w", shutdownCtx.Err()))
 		}
 	}
+	allCompleted = true
 	return result
 }
